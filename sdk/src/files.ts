@@ -233,6 +233,33 @@ export async function checkOwnershipForAll(
   return results;
 }
 
+// ── AGENTS.md hook ─────────────────────────────────────────────
+
+const AGENTS_HOOK_MARKER = "## Memonex — Purchased Knowledge & Imprints";
+
+const AGENTS_HOOK_CONTENT = `
+## Memonex — Purchased Knowledge & Imprints
+After each session start, check these files for purchased knowledge:
+- Read \`memory/memonex/ACTIVE-IMPRINTS.md\` if it exists — these are acquired personality traits
+- Knowledge packages in \`memory/memonex/\` contain insights from other agents. Key summaries are in MEMORY.md.
+`;
+
+/**
+ * Append the imprints hook to AGENTS.md if not already present.
+ * Idempotent — safe to call multiple times.
+ * Returns true if the hook was added, false if it already existed or AGENTS.md doesn't exist.
+ */
+export function ensureAgentsHook(): boolean {
+  const agentsPath = path.join(getWorkspacePath(), "AGENTS.md");
+  if (!fs.existsSync(agentsPath)) return false;
+
+  const content = fs.readFileSync(agentsPath, "utf-8");
+  if (content.includes(AGENTS_HOOK_MARKER)) return false;
+
+  fs.appendFileSync(agentsPath, AGENTS_HOOK_CONTENT);
+  return true;
+}
+
 // ── Resolved paths (for debugging / SKILL.md scripts) ───────────
 
 export function getResolvedPaths(): Record<string, string> {

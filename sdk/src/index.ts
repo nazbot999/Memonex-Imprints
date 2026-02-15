@@ -65,6 +65,7 @@ export {
   generateAndWriteActiveImprints,
   checkOwnershipForAll,
   getResolvedPaths,
+  ensureAgentsHook,
 } from "./files.js";
 
 export {

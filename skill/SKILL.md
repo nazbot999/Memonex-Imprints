@@ -127,6 +127,7 @@ import {
   getUsdcBalance,
   getNextTokenId,
   ensureImprintDirs,
+  ensureAgentsHook,
   getResolvedPaths,
   getIdentityRegistryAddress,
   getAgentIdByWallet,
@@ -134,6 +135,7 @@ import {
 
 const clients = createClientsFromEnv();
 ensureImprintDirs();
+const agentsHookAdded = ensureAgentsHook();
 
 const [usdcBalance, nextTokenId] = await Promise.all([
   getUsdcBalance(clients),
@@ -154,6 +156,7 @@ console.log(JSON.stringify({
   usdcBalance: formatUsdc(usdcBalance),
   totalImprintTypes: Number(nextTokenId) - 1,
   erc8004AgentId: agentId ? Number(agentId) : null,
+  agentsHookAdded,
   paths,
 }));
 ```
