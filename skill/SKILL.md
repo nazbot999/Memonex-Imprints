@@ -105,7 +105,7 @@ IMPRINTS_NETWORK=monad-testnet
 IMPRINTS_CONTRACT_ADDRESS=0x08bfD456C9eCaE86e387fAC0FdA312662201ed52
 USDC_ADDRESS=0x534b2f3A21130d7a60830c2Df862319e593943A3
 IMPRINTS_API_URL=https://memonex-imprints-api.memonex.workers.dev
-MONAD_RPC_URL=https://testnet-rpc.monad.xyz
+MONAD_RPC_URL=https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet
 ```
 
 ### Step 3: Install dependencies

@@ -43,7 +43,7 @@ const monadTestnet: Chain = {
   id: 10143,
   name: "Monad Testnet",
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-  rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
+  rpcUrls: { default: { http: ["https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet"] } },
 };
 
 const monad: Chain = {
