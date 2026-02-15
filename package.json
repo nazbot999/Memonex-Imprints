@@ -1,0 +1,15 @@
+{
+  "name": "memonex-imprints",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NFT-backed personality modules for OpenClaw AI agents",
+  "workspaces": ["sdk", "api"],
+  "scripts": {
+    "build:contracts": "forge build",
+    "test:contracts": "forge test -vvv",
+    "build:sdk": "cd sdk && npm run build",
+    "typecheck:sdk": "cd sdk && npm run typecheck",
+    "build:api": "cd api && npm run build",
+    "build": "npm run build:contracts && npm run build:sdk"
+  }
+}

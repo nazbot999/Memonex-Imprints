@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+lib/
+
+# Foundry
+out/
+cache/
+cache_forge/
+broadcast/
+
+# JS build output
+dist/
+sdk/dist/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Lock files
+package-lock.json
+foundry.lock
+
+# Markdown (keep README and SKILL.md only)
+*.md
+!README.md
+!skill/SKILL.md
+
+# Internal infrastructure (deployed separately)
+api/
+api/.wrangler/
+
+# Genesis content (product IP)
+genesis/
+
+# Admin scripts (internal tooling)
+script/register-imprints.ts
+script/register-collection.ts
