@@ -123,14 +123,32 @@ export async function getAgentIdByWallet(
 
     if (balance === 0n) return null;
 
-    const agentId = (await publicClient.readContract({
-      address: registry,
-      abi: IDENTITY_REGISTRY_ABI,
-      functionName: "tokenOfOwnerByIndex",
-      args: [wallet, 0n],
-    })) as bigint;
+    // The registry does not support ERC-721 Enumerable (tokenOfOwnerByIndex).
+    // Scan ownerOf in batches via multicall to find the wallet's token.
+    const BATCH = 200;
+    for (let start = 1; ; start += BATCH) {
+      const contracts = Array.from({ length: BATCH }, (_, i) => ({
+        address: registry,
+        abi: IDENTITY_REGISTRY_ABI,
+        functionName: "ownerOf" as const,
+        args: [BigInt(start + i)] as const,
+      }));
 
-    return agentId;
+      const results = await publicClient.multicall({ contracts });
+
+      let allFailed = true;
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.status !== "success") continue;
+        allFailed = false;
+        if ((r.result as string).toLowerCase() === wallet.toLowerCase()) {
+          return BigInt(start + i);
+        }
+      }
+
+      // Past the last token — stop scanning
+      if (allFailed) return null;
+    }
   } catch {
     return null;
   }

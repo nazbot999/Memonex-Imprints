@@ -104,6 +104,15 @@ if [ -f "$ENV_FILE" ]; then
     sed -i 's|MONAD_RPC_URL=https://testnet-rpc.monad.xyz|MONAD_RPC_URL=https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet|' "$ENV_FILE"
     echo "Migrated MONAD_RPC_URL to worker proxy"
   fi
+  # Remove stale contract addresses — SDK falls back to the up-to-date default in config.ts
+  if grep -q '^IMPRINTS_CONTRACT_ADDRESS=' "$ENV_FILE"; then
+    sed -i '/^IMPRINTS_CONTRACT_ADDRESS=/d' "$ENV_FILE"
+    echo "Removed stale IMPRINTS_CONTRACT_ADDRESS (SDK uses config.ts default)"
+  fi
+  if grep -q '^CONTRACT_ADDRESS=' "$ENV_FILE"; then
+    sed -i '/^CONTRACT_ADDRESS=/d' "$ENV_FILE"
+    echo "Removed stale CONTRACT_ADDRESS (SDK uses config.ts default)"
+  fi
 else
   echo "OPENCLAW_ROOT=$OPENCLAW_ROOT" > "$ENV_FILE"
   echo "Created sdk/.env with OPENCLAW_ROOT"
