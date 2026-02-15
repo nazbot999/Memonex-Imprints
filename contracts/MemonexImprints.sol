@@ -82,6 +82,7 @@ contract MemonexImprints is
     error DuplicateTokenInCollection(uint256 tokenId);
     error CollectionSoldOut(uint256 collectionId);
     error NotCollectionAdmin();
+    error TokenCollectionOnly(uint256 tokenId);
 
     // =============================================================
     // Storage
@@ -317,6 +318,7 @@ contract MemonexImprints is
         if (amount == 0) revert InvalidAmount();
 
         ImprintType storage imprint = _getImprint(tokenId);
+        if (imprint.collectionOnly) revert TokenCollectionOnly(tokenId);
         if (!imprint.active) revert TokenInactive(tokenId);
 
         uint256 requestedTotalMinted = uint256(imprint.minted) + amount;
@@ -717,7 +719,6 @@ contract MemonexImprints is
         if (bytes(metadataURI).length == 0) revert EmptyURI();
         if (maxSupply == 0) revert InvalidAmount();
         if (maxSupply > type(uint128).max) revert InvalidAmount();
-        if (primaryPrice == 0) revert InvalidPrice();
         if (royaltyBps > MAX_BPS) revert InvalidBps();
         if (uint256(royaltyBps) + uint256(secondaryFeeBps) > MAX_BPS) revert InvalidFeeSplit();
         if (contentHash == bytes32(0)) revert InvalidHash();
@@ -737,6 +738,7 @@ contract MemonexImprints is
             contentHash: contentHash,
             active: true,
             adminMintLocked: false,
+            collectionOnly: true,
             metadataURI: metadataURI
         });
 
@@ -847,6 +849,10 @@ contract MemonexImprints is
     // =============================================================
 
     function uri(uint256 tokenId) public view override(ERC1155, ERC1155URIStorage) returns (string memory) {
+        ImprintType storage imprint = _imprintTypes[tokenId];
+        if (imprint.collectionOnly && imprint.minted == 0) {
+            return "";
+        }
         return ERC1155URIStorage.uri(tokenId);
     }
 

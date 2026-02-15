@@ -17,6 +17,7 @@ interface IMemonexImprints {
         bytes32 contentHash;
         bool active;
         bool adminMintLocked;
+        bool collectionOnly;
         string metadataURI;
     }
 

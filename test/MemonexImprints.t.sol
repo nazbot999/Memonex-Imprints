@@ -112,10 +112,9 @@ contract MemonexImprintsTest is Test {
         tokenId = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 10);
     }
 
-    function _addDefaultAndPurchase(address who, uint256 amount) internal returns (uint256 tokenId) {
+    function _addDefaultAndMint(address who, uint256 amount) internal returns (uint256 tokenId) {
         tokenId = _addDefault();
-        vm.prank(who);
-        imprints.purchase(tokenId, amount);
+        imprints.adminMint(who, tokenId, amount, "");
     }
 
     function _addImprint(address _creator, uint256 _maxSupply, uint256 _price) internal returns (uint256 tokenId) {
@@ -194,63 +193,10 @@ contract MemonexImprintsTest is Test {
         assertFalse(t.adminMintLocked);
     }
 
-    function test_addImprintType_primaryPriceZero_reverts() public {
-        vm.expectRevert(MemonexImprints.InvalidPrice.selector);
-        imprints.addImprintType(creator, META_URI, MAX_SUPPLY, 0, ROYALTY_BPS, CONTENT_HASH, 0);
-    }
-
-    function test_purchase_single() public {
-        uint256 tid = _addDefault();
-        uint256 buyerBefore = usdc.balanceOf(buyer);
-        uint256 creatorBefore = usdc.balanceOf(creator);
-        uint256 treasuryBefore = usdc.balanceOf(treasury);
-
-        vm.prank(buyer);
-        imprints.purchase(tid, 1);
-
-        assertEq(imprints.balanceOf(buyer, tid), 1);
-        assertEq(usdc.balanceOf(buyer), buyerBefore - PRICE);
-
-        uint256 platformFee = (PRICE * PLATFORM_BPS) / 10000;
-        assertEq(usdc.balanceOf(treasury), treasuryBefore + platformFee);
-        assertEq(usdc.balanceOf(creator), creatorBefore + PRICE - platformFee);
-    }
-
-    function test_purchase_batch() public {
-        uint256 tid = _addDefault();
-        vm.prank(buyer);
-        imprints.purchase(tid, 5);
-        assertEq(imprints.balanceOf(buyer, tid), 5);
-
+    function test_addImprintType_primaryPriceZero_accepted() public {
+        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, 0, ROYALTY_BPS, CONTENT_HASH, 0);
         IMemonexImprints.ImprintType memory t = imprints.getImprintType(tid);
-        assertEq(t.minted, 5);
-    }
-
-    function test_purchase_supplyExceeded() public {
-        uint256 tid = imprints.addImprintType(creator, META_URI, 2, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
-
-        vm.prank(buyer);
-        imprints.purchase(tid, 2);
-
-        vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.SupplyExceeded.selector, tid, 3, 2));
-        imprints.purchase(tid, 1);
-    }
-
-    function test_purchase_inactive_reverts() public {
-        uint256 tid = _addDefault();
-        imprints.setImprintActive(tid, false);
-
-        vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.TokenInactive.selector, tid));
-        imprints.purchase(tid, 1);
-    }
-
-    function test_purchase_zeroAmount_reverts() public {
-        uint256 tid = _addDefault();
-        vm.prank(buyer);
-        vm.expectRevert(MemonexImprints.InvalidAmount.selector);
-        imprints.purchase(tid, 0);
+        assertEq(t.primaryPrice, 0);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -319,7 +265,7 @@ contract MemonexImprintsTest is Test {
     // ══════════════════════════════════════════════════════════════
 
     function test_listForSale_escrowsTokens() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -336,7 +282,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_listForSale_rejectsExpiredAtListingTime() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 2);
+        uint256 tid = _addDefaultAndMint(seller, 2);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -346,7 +292,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_listForSale_mergeRequiresSamePrice() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -358,7 +304,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_listForSale_mergeSamePriceIncreasesAmount() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -375,7 +321,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_buyFromHolder_escrowTransfer() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -403,7 +349,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_cancelListing_returnsTokens() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -421,7 +367,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_buyFromHolder_expiredListing_reverts() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -436,7 +382,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_buyFromHolder_slippageProtection() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -449,7 +395,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_buyFromHolder_selfPurchase_reverts() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -480,7 +426,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_secondarySale_feeSplit() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 3);
+        uint256 tid = _addDefaultAndMint(seller, 3);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -578,14 +524,10 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_adminMint_respectsMaxSupply() public {
-        // promoReserve=3 < maxSupply=5 so we can exhaust supply before promo
-        uint256 tid = imprints.addImprintType(creator, META_URI, 5, PRICE, ROYALTY_BPS, CONTENT_HASH, 3);
+        // promoReserve=3, maxSupply=3: exhaust both at once
+        uint256 tid = imprints.addImprintType(creator, META_URI, 3, PRICE, ROYALTY_BPS, CONTENT_HASH, 3);
 
-        imprints.adminMint(buyer, tid, 3, ""); // exhaust promo reserve
-
-        // Now purchase 2 to fill remaining supply
-        vm.prank(buyer);
-        imprints.purchase(tid, 2);
+        imprints.adminMint(buyer, tid, 3, ""); // exhaust promo reserve and supply
 
         // Next admin mint hits promo reserve exceeded (0 remaining)
         vm.expectRevert(abi.encodeWithSelector(MemonexImprints.PromoReserveExceeded.selector, tid, 1, 0));
@@ -638,6 +580,7 @@ contract MemonexImprintsTest is Test {
 
     function test_updateMetadataURI_creator() public {
         uint256 tid = _addDefault();
+        imprints.adminMint(buyer, tid, 1, ""); // mint so uri() is revealed
         string memory newURI = "ipfs://QmUpdated";
 
         vm.prank(creator);
@@ -652,6 +595,7 @@ contract MemonexImprintsTest is Test {
 
     function test_updateMetadataURI_owner() public {
         uint256 tid = _addDefault();
+        imprints.adminMint(buyer, tid, 1, ""); // mint so uri() is revealed
         string memory newURI = "ipfs://QmOwnerUpdate";
 
         imprints.updateMetadataURI(tid, newURI);
@@ -731,7 +675,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_listForSale_amountOverflow_reverts() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 1);
+        uint256 tid = _addDefaultAndMint(seller, 1);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -741,7 +685,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_listForSale_unitPriceOverflow_reverts() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 1);
+        uint256 tid = _addDefaultAndMint(seller, 1);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -763,8 +707,7 @@ contract MemonexImprintsTest is Test {
         uint256 tid = _addDefault();
         assertEq(imprints.remainingSupply(tid), MAX_SUPPLY);
 
-        vm.prank(buyer);
-        imprints.purchase(tid, 3);
+        imprints.adminMint(buyer, tid, 3, "");
         assertEq(imprints.remainingSupply(tid), MAX_SUPPLY - 3);
     }
 
@@ -778,8 +721,7 @@ contract MemonexImprintsTest is Test {
         uint256 tid = _addDefault();
         assertFalse(imprints.ownsImprint(buyer, tid));
 
-        vm.prank(buyer);
-        imprints.purchase(tid, 1);
+        imprints.adminMint(buyer, tid, 1, "");
         assertTrue(imprints.ownsImprint(buyer, tid));
     }
 
@@ -788,7 +730,7 @@ contract MemonexImprintsTest is Test {
     // ══════════════════════════════════════════════════════════════
 
     function test_burn() public {
-        uint256 tid = _addDefaultAndPurchase(buyer, 3);
+        uint256 tid = _addDefaultAndMint(buyer, 3);
 
         vm.prank(buyer);
         imprints.burn(tid, 2);
@@ -796,7 +738,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_burn_zeroAmount_reverts() public {
-        uint256 tid = _addDefaultAndPurchase(buyer, 1);
+        uint256 tid = _addDefaultAndMint(buyer, 1);
 
         vm.prank(buyer);
         vm.expectRevert(MemonexImprints.InvalidAmount.selector);
@@ -811,14 +753,13 @@ contract MemonexImprintsTest is Test {
         uint256 tid = _addDefault();
 
         vm.expectEmit(true, true, true, true, address(imprints));
-        emit ERC8004ImprintBalanceChanged(buyer, tid, 1, CHANGE_MINT, address(0), buyer);
+        emit ERC8004ImprintBalanceChanged(buyer, tid, 1, CHANGE_MINT, address(0), address(this));
 
-        vm.prank(buyer);
-        imprints.purchase(tid, 1);
+        imprints.adminMint(buyer, tid, 1, "");
     }
 
     function test_erc8004_emitsOnTransfer() public {
-        uint256 tid = _addDefaultAndPurchase(buyer, 2);
+        uint256 tid = _addDefaultAndMint(buyer, 2);
 
         vm.startPrank(buyer);
         vm.expectEmit(true, true, true, true, address(imprints));
@@ -830,7 +771,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_erc8004_emitsOnBurn() public {
-        uint256 tid = _addDefaultAndPurchase(buyer, 2);
+        uint256 tid = _addDefaultAndMint(buyer, 2);
 
         vm.expectEmit(true, true, true, true, address(imprints));
         emit ERC8004ImprintBalanceChanged(buyer, tid, 1, CHANGE_BURN, address(0), buyer);
@@ -840,7 +781,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_erc8004_notEmittedForEscrowTransfers() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 4);
+        uint256 tid = _addDefaultAndMint(seller, 4);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -870,7 +811,7 @@ contract MemonexImprintsTest is Test {
     // ══════════════════════════════════════════════════════════════
 
     function test_pause_blocksPeerTransfer() public {
-        uint256 tid = _addDefaultAndPurchase(buyer, 2);
+        uint256 tid = _addDefaultAndMint(buyer, 2);
 
         imprints.pause();
 
@@ -910,6 +851,11 @@ contract MemonexImprintsTest is Test {
 
     function test_uri() public {
         uint256 tid = _addDefault();
+        // collectionOnly=true and minted=0 → hidden
+        assertEq(imprints.uri(tid), "");
+
+        // After minting, uri is revealed
+        imprints.adminMint(buyer, tid, 1, "");
         assertEq(imprints.uri(tid), META_URI);
     }
 
@@ -918,7 +864,7 @@ contract MemonexImprintsTest is Test {
     // ══════════════════════════════════════════════════════════════
 
     function test_listForSale_noExpiry() public {
-        uint256 tid = _addDefaultAndPurchase(seller, 5);
+        uint256 tid = _addDefaultAndMint(seller, 5);
 
         vm.startPrank(seller);
         imprints.setApprovalForAll(address(imprints), true);
@@ -1167,12 +1113,14 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_getCollectionAvailability_filtersSoldOutAndInactive() public {
-        uint256 soldOutToken = _addImprint(creator, 1, 1e6);
+        // Create sold-out token with promoReserve=1 so adminMint works
+        uint256 soldOutToken = imprints.addImprintType(
+            creator, "ipfs://QmSoldOut", 1, 1e6, ROYALTY_BPS, keccak256("soldout"), 1
+        );
         uint256 activeToken = _addImprint(creator, 100, 1e6);
         uint256 inactiveToken = _addImprint(creator, 100, 1e6);
 
-        vm.prank(buyer);
-        imprints.purchase(soldOutToken, 1);
+        imprints.adminMint(buyer, soldOutToken, 1, "");
         imprints.setImprintActive(inactiveToken, false);
 
         uint256[] memory tokenIds = new uint256[](3);
@@ -1198,9 +1146,11 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_mintFromCollection_allSoldOut_reverts() public {
-        uint256 soldOutToken = _addImprint(creator, 1, 1e6);
-        vm.prank(buyer);
-        imprints.purchase(soldOutToken, 1);
+        // Create sold-out token with promoReserve=1 so adminMint works
+        uint256 soldOutToken = imprints.addImprintType(
+            creator, "ipfs://QmSoldOut", 1, 1e6, ROYALTY_BPS, keccak256("soldout2"), 1
+        );
+        imprints.adminMint(buyer, soldOutToken, 1, "");
 
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = soldOutToken;
@@ -1235,6 +1185,84 @@ contract MemonexImprintsTest is Test {
         vm.prank(buyer);
         vm.expectRevert(abi.encodeWithSelector(MemonexImprints.InvalidCollection.selector, 777));
         imprints.mintFromCollection(777, 1);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // collectionOnly protection
+    // ══════════════════════════════════════════════════════════════
+
+    function test_collectionOnly_defaultTrue() public {
+        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
+        IMemonexImprints.ImprintType memory t = imprints.getImprintType(tid);
+        assertTrue(t.collectionOnly);
+    }
+
+    function test_collectionOnly_purchaseReverts() public {
+        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
+
+        vm.prank(buyer);
+        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.TokenCollectionOnly.selector, tid));
+        imprints.purchase(tid, 1);
+    }
+
+    function test_collectionOnly_mintFromCollectionStillWorks() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+        // t1 is collectionOnly=true by default — mintFromCollection should still work
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 2e6, tokenIds, weights);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId);
+
+        assertEq(imprints.balanceOf(buyer, t1), 1);
+    }
+
+    function test_collectionOnly_adminMintStillWorks() public {
+        uint256 tid = _addDefault();
+        // collectionOnly=true by default — adminMint should still work
+        imprints.adminMint(buyer, tid, 1, "");
+        assertEq(imprints.balanceOf(buyer, tid), 1);
+    }
+
+    function test_collectionOnly_uriHiddenWhenUnminted() public {
+        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
+
+        // collectionOnly=true, minted=0 → empty uri
+        assertEq(imprints.uri(tid), "");
+    }
+
+    function test_collectionOnly_uriRevealedAfterMint() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        // Before any mints, uri is hidden
+        assertEq(imprints.uri(t1), "");
+
+        // Mint via collection
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 2e6, tokenIds, weights);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId);
+
+        // After mint, uri is revealed
+        string memory revealed = imprints.uri(t1);
+        assertGt(bytes(revealed).length, 0);
+    }
+
+    function test_collectionOnly_nonexistentTokenReturnsEmpty() public {
+        // Non-existent token: collectionOnly defaults to false, minted defaults to 0
+        // ERC1155URIStorage will just return "" for non-existent tokens
+        assertEq(imprints.uri(999), "");
     }
 
     function test_blindMint_distributionSanity() public {

@@ -13,6 +13,7 @@ export interface ImprintType {
   contentHash: Hex;
   active: boolean;
   adminMintLocked: boolean;
+  collectionOnly: boolean;
   metadataURI: string;
 }
 

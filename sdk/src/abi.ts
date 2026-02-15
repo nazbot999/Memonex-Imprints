@@ -19,6 +19,7 @@ export const MEMONEX_IMPRINTS_ABI = [
           { name: "contentHash", type: "bytes32" },
           { name: "active", type: "bool" },
           { name: "adminMintLocked", type: "bool" },
+          { name: "collectionOnly", type: "bool" },
           { name: "metadataURI", type: "string" },
         ],
       },

@@ -123,7 +123,7 @@ genesis/                   Collection content (user-populated)
   collections/             Collection definitions
 
 test/
-  MemonexImprints.t.sol    83 Foundry tests
+  MemonexImprints.t.sol    85 Foundry tests
 ```
 
 ## Smart Contract
@@ -132,7 +132,7 @@ test/
 
 | Contract | Address |
 |----------|---------|
-| MemonexImprints | [`0xe7D1848f413B6396776d80D706EdB02BFc7fefC2`](https://testnet.monadscan.com/address/0xe7D1848f413B6396776d80D706EdB02BFc7fefC2) |
+| MemonexImprints | [`0x08bfD456C9eCaE86e387fAC0FdA312662201ed52`](https://testnet.monadscan.com/address/0x08bfD456C9eCaE86e387fAC0FdA312662201ed52) |
 | USDC | `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 | ERC-8004 Identity | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.monadscan.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ERC-8004 Reputation | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.monadscan.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
@@ -225,7 +225,7 @@ On first `/imprints setup`, the SDK appends a hook to `AGENTS.md` that tells the
 ```bash
 # Contract
 forge build              # compile
-forge test -vvv          # 83 tests
+forge test -vvv          # 85 tests
 
 # SDK
 cd sdk && npm install

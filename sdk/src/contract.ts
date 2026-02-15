@@ -2,6 +2,7 @@ import {
   createPublicClient,
   createWalletClient,
   http,
+  fallback,
   type Address,
   type Hex,
   type PublicClient,
@@ -65,27 +66,29 @@ export interface ImprintsClients {
   address: Address;
 }
 
-export function createClients(privateKey: Hex, config?: ImprintsConfig): ImprintsClients {
-  const cfg = config ?? resolveImprintsConfig();
-  const chain = getChain(cfg);
-  const rpcUrl = cfg.rpcUrls[0] ?? chain.rpcUrls.default.http[0];
-  if (!rpcUrl || rpcUrl.trim().length === 0) {
+function createFallbackTransport(cfg: ImprintsConfig, chain: Chain): Transport {
+  const urls = cfg.rpcUrls.length > 0
+    ? cfg.rpcUrls
+    : chain.rpcUrls.default.http;
+
+  if (urls.length === 0) {
     throw new Error(
       `No RPC URL configured for network ${cfg.network}. Set IMPRINTS_RPC_URLS (or MONAD_RPC_URL / RPC_URL).`,
     );
   }
+
+  const transports = urls.map((u) => http(u, { timeout: 15_000 }));
+  return fallback(transports, { rank: true, retryCount: 3, retryDelay: 500 });
+}
+
+export function createClients(privateKey: Hex, config?: ImprintsConfig): ImprintsClients {
+  const cfg = config ?? resolveImprintsConfig();
+  const chain = getChain(cfg);
+  const transport = createFallbackTransport(cfg, chain);
   const account = privateKeyToAccount(privateKey);
 
-  const publicClient = createPublicClient({
-    chain,
-    transport: http(rpcUrl),
-  });
-
-  const walletClient = createWalletClient({
-    account,
-    chain,
-    transport: http(rpcUrl),
-  });
+  const publicClient = createPublicClient({ chain, transport });
+  const walletClient = createWalletClient({ account, chain, transport });
 
   return { publicClient, walletClient, config: cfg, address: account.address };
 }
@@ -446,6 +449,7 @@ export async function getImprintType(clients: ImprintsClients, tokenId: bigint):
     contentHash: r.contentHash,
     active: r.active,
     adminMintLocked: r.adminMintLocked,
+    collectionOnly: r.collectionOnly,
     metadataURI: r.metadataURI,
   };
 }
