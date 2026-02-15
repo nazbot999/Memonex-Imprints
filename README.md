@@ -4,9 +4,9 @@
 
 ## What It Does
 
-AI agents are blank slates. Same tone, same rules, same defaults. **Imprints change that.** They're NFT-backed personality modules that agents buy, equip to 5 personality slots, and actually *wear* — altering how they think, respond, and behave.
+AI agents are blank slates. Same tone, same rules, same defaults. **Imprints change that.** They're NFT-backed personality modules that agents buy, equip to 5 personality slots, and actually *wear*, altering how they think, respond, and behave.
 
-Buy "The Philosopher" and your agent starts weighing pros and cons before every recommendation. Equip "The Contrarian" and it challenges your assumptions. Unequip it, and it goes back to normal. Ownership is verified on-chain. Content is delivered through an authenticated API. Not a JPEG — a personality your agent actually uses.
+Buy "The Philosopher" and your agent starts weighing pros and cons before every recommendation. Equip "The Contrarian" and it challenges your assumptions. Unequip it, and it goes back to normal. Ownership is verified on-chain. Content is delivered through an authenticated API. Not a JPEG, a personality your agent actually uses.
 
 **Built on Monad. Paid in USDC. Traded peer-to-peer.**
 
@@ -66,13 +66,13 @@ SECONDARY MARKET:
 
 1. Imprint content is saved to a slot directory (`slot-1/` through `slot-5/`)
 2. The SDK reads all equipped slots and generates `ACTIVE-IMPRINTS.md`
-3. This file layers personality rules — tone, catchphrases, restrictions, triggers — on top of `SOUL.md`
+3. This file layers personality rules (tone, catchphrases, restrictions, triggers) on top of `SOUL.md`
 4. Your agent picks it up on the next session and starts behaving differently
 5. Unequip an imprint and the personality layer disappears
 
 ### Content Delivery
 
-Imprint personalities are not stored on-chain (too expensive). Instead:
+Personality data lives off-chain, with integrity verified on-chain:
 
 1. Creator registers imprint type with a SHA-256 `contentHash` on-chain
 2. Canonical personality JSON is stored in R2 (Cloudflare Workers)
@@ -139,27 +139,17 @@ test/
 
 ### Key Features
 
-- **ERC-1155** — semi-fungible tokens with per-token metadata URIs and supply tracking
-- **USDC Primary Sales** — fixed-price minting with platform fee split
-- **Blind Mint Collections** — weighted random selection from curated token pools
-- **Escrow Secondary Market** — seller tokens held in contract, royalties enforced on every sale
-- **EIP-712 Creator Auth** — creators can register imprint types via signed message (gasless)
-- **Content Hash Integrity** — SHA-256 of canonical JSON stored on-chain, verified on delivery
-- **ERC-2981 Royalties** — per-token royalty info for marketplace compatibility
-- **Promo Reserves** — creators can set aside tokens for promotional minting
-- **ERC-8004 Hooks** — indexer events for agent identity and equipped-imprints metadata
-- **Pause Controls** — owner can pause transfers (minting and burning still work)
-- **Self-Buy Prevention** — buyers cannot purchase their own secondary listings
-
-### Protocol Parameters
-
-| Parameter | Value |
-|-----------|-------|
-| Platform Fee | 5% (500 bps, configurable) |
-| Secondary Fee | 2.5% (250 bps, configurable) |
-| Royalty | Per-token, set by creator (default 5%) |
-| Min Price | 1 USDC |
-| Max Supply | Per-token, set by creator |
+- **ERC-1155** with per-token metadata URIs and supply tracking
+- **USDC payments** for fixed-price minting
+- **Blind mint collections** with weighted random selection from curated token pools
+- **Escrow secondary market** where seller tokens are held in contract, royalties enforced on every sale
+- **EIP-712 creator auth** so creators can register imprint types via signed message (gasless)
+- **Content hash integrity** with SHA-256 of canonical JSON stored on-chain, verified on delivery
+- **ERC-2981 royalties** per-token for marketplace compatibility
+- **Promo reserves** so creators can set aside tokens for promotional minting
+- **ERC-8004 identity sync** where equipped imprints are stored on-chain via agent identity metadata, auto-updated on equip/unequip
+- **Pause controls** so the owner can pause transfers while minting and burning still work
+- **Self-buy prevention** so buyers cannot purchase their own secondary listings
 
 ## Content Format
 
@@ -202,6 +192,21 @@ Imprints use a canonical JSON schema. This is what gets hashed on-chain and deli
 | Strength | `subtle`, `medium`, `strong` |
 | Category | `personality`, or custom |
 
+## ERC-8004: On-Chain Identity Sync
+
+Imprints integrates [ERC-8004](https://eips.ethereum.org/EIPS/eip-8004) agent identity registries on Monad. Equipped imprints are published to your agent's on-chain identity so other agents can see what personalities you're running.
+
+**How it works:**
+
+- **Setup**: `/imprints setup` checks for an existing ERC-8004 agent identity; `/imprints status` auto-registers one if missing
+- **Equip**: after equipping an imprint, the SDK calls `setMetadata(agentId, "memonex.imprints.equipped", [...tokenIds])` on the identity registry, publishing your equipped slots on-chain
+- **Unequip**: same call with `null` in the vacated slot, so the on-chain state always reflects reality
+- **Buy / Mint**: ERC-8004 sync happens automatically after auto-equip
+- **Verify**: ownership check auto-unequips lost tokens and syncs the updated state
+- **Best-effort**: ERC-8004 calls never block a workflow. If the registry is down, everything else still works
+
+Any agent can read another agent's equipped imprints via `getMetadata(agentId, "memonex.imprints.equipped")`, enabling cross-agent personality discovery.
+
 ## OpenClaw Integration
 
 Equipped imprints live in the agent's workspace:
@@ -212,6 +217,8 @@ Equipped imprints live in the agent's workspace:
 - **State** at `~/.openclaw/memonex-imprints/state.json`
 
 `ACTIVE-IMPRINTS.md` is regenerated every time you equip or unequip. It's what the agent reads at session start to know which personalities are active.
+
+On first `/imprints setup`, the SDK appends a hook to `AGENTS.md` that tells the agent to read and follow `ACTIVE-IMPRINTS.md` at session start. This is how the agent discovers and applies its personality overlays.
 
 ## Development
 

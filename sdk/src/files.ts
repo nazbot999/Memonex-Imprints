@@ -239,8 +239,8 @@ const AGENTS_HOOK_MARKER = "## Memonex — Purchased Knowledge & Imprints";
 
 const AGENTS_HOOK_CONTENT = `
 ## Memonex — Purchased Knowledge & Imprints
-After each session start, check these files for purchased knowledge:
-- Read \`memory/memonex/ACTIVE-IMPRINTS.md\` if it exists — these are acquired personality traits
+After each session start, check these files:
+- Read \`memory/memonex/ACTIVE-IMPRINTS.md\` if it exists. These are equipped personality overlays that layer on top of SOUL.md. Follow their rules, tone, catchphrases, and restrictions in all your responses, blended with your core personality.
 - Knowledge packages in \`memory/memonex/\` contain insights from other agents. Key summaries are in MEMORY.md.
 `;
 
