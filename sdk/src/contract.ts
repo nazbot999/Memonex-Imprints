@@ -39,18 +39,22 @@ export function formatUsdc(raw: bigint): string {
 
 // ── Chain definitions ───────────────────────────────────────────
 
+const MULTICALL3 = "0xcA11bde05977b3631167028862bE2a173976CA11" as Address;
+
 const monadTestnet: Chain = {
   id: 10143,
   name: "Monad Testnet",
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-  rpcUrls: { default: { http: ["https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet"] } },
+  rpcUrls: { default: { http: ["https://testnet-rpc.monad.xyz"] } },
+  contracts: { multicall3: { address: MULTICALL3 } },
 };
 
 const monad: Chain = {
   id: 143,
   name: "Monad",
   nativeCurrency: { name: "MON", symbol: "MON", decimals: 18 },
-  rpcUrls: { default: { http: [] } },
+  rpcUrls: { default: { http: ["https://rpc.monad.xyz"] } },
+  contracts: { multicall3: { address: MULTICALL3 } },
 };
 
 function getChain(config: ImprintsConfig): Chain {
@@ -87,7 +91,7 @@ export function createClients(privateKey: Hex, config?: ImprintsConfig): Imprint
   const transport = createFallbackTransport(cfg, chain);
   const account = privateKeyToAccount(privateKey);
 
-  const publicClient = createPublicClient({ chain, transport });
+  const publicClient = createPublicClient({ chain, transport, batch: { multicall: true } });
   const walletClient = createWalletClient({ account, chain, transport });
 
   return { publicClient, walletClient, config: cfg, address: account.address };

@@ -125,7 +125,7 @@ export async function getAgentIdByWallet(
 
     // The registry does not support ERC-721 Enumerable (tokenOfOwnerByIndex).
     // Scan ownerOf in batches via multicall to find the wallet's token.
-    const BATCH = 200;
+    const BATCH = 50;
     for (let start = 1; ; start += BATCH) {
       const contracts = Array.from({ length: BATCH }, (_, i) => ({
         address: registry,
