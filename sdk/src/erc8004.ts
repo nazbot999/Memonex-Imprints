@@ -149,7 +149,12 @@ export async function registerAgent(
     account: clients.address,
   });
 
-  const hash = await clients.walletClient.writeContract(sim.request as any);
+  // Strip address-only account so walletClient uses its local signing key
+  const { account: _account, ...request } = sim.request;
+  const hash = await clients.walletClient.writeContract({
+    ...(request as any),
+    chain: clients.walletClient.chain,
+  });
   await clients.publicClient.waitForTransactionReceipt({ hash });
 
   // Read back the agent ID
@@ -184,11 +189,19 @@ export async function setEquippedImprintsMetadata(
   const encoded = new TextEncoder().encode(JSON.stringify(payload));
   const hexValue = `0x${Buffer.from(encoded).toString("hex")}` as Hex;
 
-  const hash = await clients.walletClient.writeContract({
+  // Simulate first, then strip address-only account for local signing
+  const sim = await clients.publicClient.simulateContract({
     address: registry,
     abi: IDENTITY_REGISTRY_ABI,
     functionName: "setMetadata",
     args: [agentId, IMPRINTS_METADATA_KEY, hexValue],
+    account: clients.address,
+  });
+
+  const { account: _account, ...request } = sim.request;
+  const hash = await clients.walletClient.writeContract({
+    ...(request as any),
+    chain: clients.walletClient.chain,
   });
   await clients.publicClient.waitForTransactionReceipt({ hash });
   return hash;
