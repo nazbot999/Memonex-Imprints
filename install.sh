@@ -90,17 +90,18 @@ if [ -f "$SDK_DIR/skill/.clawhub/origin.json" ]; then
   cp "$SDK_DIR/skill/.clawhub/origin.json" "$SKILL_DIR/.clawhub/origin.json"
 fi
 
-# --- Persist OPENCLAW_ROOT to .env so SDK resolves paths correctly ---
-ENV_FILE="$SDK_DIR/.env"
+# --- Persist OPENCLAW_ROOT to sdk/.env so dotenv.config() resolves paths ---
+# Scripts run from sdk/ via `cd $IMPRINTS_SDK && npx tsx ...` so .env must be there.
+ENV_FILE="$SDK_DIR/sdk/.env"
 if [ -f "$ENV_FILE" ]; then
   if ! grep -q '^OPENCLAW_ROOT=' "$ENV_FILE"; then
     echo "" >> "$ENV_FILE"
     echo "OPENCLAW_ROOT=$OPENCLAW_ROOT" >> "$ENV_FILE"
-    echo "Appended OPENCLAW_ROOT to existing .env"
+    echo "Appended OPENCLAW_ROOT to existing sdk/.env"
   fi
 else
   echo "OPENCLAW_ROOT=$OPENCLAW_ROOT" > "$ENV_FILE"
-  echo "Created .env with OPENCLAW_ROOT"
+  echo "Created sdk/.env with OPENCLAW_ROOT"
 fi
 
 echo ""

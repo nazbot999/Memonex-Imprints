@@ -12,13 +12,13 @@ Imprints are NFT-backed personality modules (ERC-1155) on Monad, purchasable wit
 
 ## Paths
 
-All paths are resolved from environment variables with auto-detection fallbacks.
+All paths derive from `OPENCLAW_ROOT`. If it's set, everything else resolves automatically. External users only need this one env var for non-default installs.
 
 | Variable | Resolves To | Description |
 |----------|-------------|-------------|
-| `$OPENCLAW_ROOT` | `~/.openclaw` | OpenClaw installation root |
-| `$IMPRINTS_HOME` | `$OPENCLAW_ROOT/memonex-imprints` | Imprints SDK + state root |
-| `$WORKSPACE` | `$OPENCLAW_ROOT/workspace` | Agent workspace |
+| `$OPENCLAW_ROOT` | `OPENCLAW_ROOT` env var in `.env`, else auto-detected from `$IMPRINTS_HOME` parent | Agent's OpenClaw root (all other paths derive from this) |
+| `$IMPRINTS_HOME` | `IMPRINTS_HOME` env var, else `$OPENCLAW_ROOT/memonex-imprints` | Imprints SDK + state root |
+| `$WORKSPACE` | `OPENCLAW_WORKSPACE` env var, else `$OPENCLAW_ROOT/workspace` | Agent workspace |
 | `$IMPRINTS_SDK` | `$IMPRINTS_HOME/sdk` | SDK directory (run scripts from here) |
 | `$LIBRARY` | `$IMPRINTS_HOME/library` | All owned imprints (token-N dirs) |
 | `$EQUIPPED` | `$IMPRINTS_HOME/equipped` | Slot dirs (slot-1 through slot-5) |
@@ -97,9 +97,10 @@ Ask the user:
 
 ### Step 2: Write .env file
 
-Write to `$IMPRINTS_SDK/.env`:
+Write to `$IMPRINTS_SDK/.env`. **Critical**: `OPENCLAW_ROOT` must be set so the SDK writes files to the correct agent workspace (not `~/.openclaw`). Derive it from `$IMPRINTS_HOME`'s parent directory. If `.env` already exists and has `OPENCLAW_ROOT`, preserve the existing value.
 
 ```
+OPENCLAW_ROOT=<parent_directory_of_IMPRINTS_HOME>
 IMPRINTS_PRIVATE_KEY=0x...
 IMPRINTS_NETWORK=monad-testnet
 IMPRINTS_CONTRACT_ADDRESS=0x08bfD456C9eCaE86e387fAC0FdA312662201ed52

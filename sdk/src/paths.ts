@@ -39,9 +39,12 @@ export function getOpenclawRoot(): string {
     if (looksLikeOpenclawRoot(candidate)) return candidate;
   }
 
-  // 4. Infer from cwd — scripts run via `cd $IMPRINTS_HOME && npx tsx ...`
+  // 4. Infer from cwd — scripts run via `cd $IMPRINTS_HOME/sdk && npx tsx ...`
+  //    so cwd may be 1 or 2 levels below the OpenClaw root
   const cwdParent = path.dirname(process.cwd());
   if (looksLikeOpenclawRoot(cwdParent)) return cwdParent;
+  const cwdGrandparent = path.dirname(cwdParent);
+  if (looksLikeOpenclawRoot(cwdGrandparent)) return cwdGrandparent;
 
   // 5. Fallback: default location
   return path.join(os.homedir(), ".openclaw");
