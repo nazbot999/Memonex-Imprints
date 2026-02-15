@@ -99,6 +99,11 @@ if [ -f "$ENV_FILE" ]; then
     echo "OPENCLAW_ROOT=$OPENCLAW_ROOT" >> "$ENV_FILE"
     echo "Appended OPENCLAW_ROOT to existing sdk/.env"
   fi
+  # Migrate: replace public RPC with worker proxy if still using old default
+  if grep -q 'MONAD_RPC_URL=https://testnet-rpc.monad.xyz' "$ENV_FILE"; then
+    sed -i 's|MONAD_RPC_URL=https://testnet-rpc.monad.xyz|MONAD_RPC_URL=https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet|' "$ENV_FILE"
+    echo "Migrated MONAD_RPC_URL to worker proxy"
+  fi
 else
   echo "OPENCLAW_ROOT=$OPENCLAW_ROOT" > "$ENV_FILE"
   echo "Created sdk/.env with OPENCLAW_ROOT"
