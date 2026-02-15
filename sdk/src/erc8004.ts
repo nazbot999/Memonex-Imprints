@@ -157,14 +157,8 @@ export async function registerAgent(
   });
   await clients.publicClient.waitForTransactionReceipt({ hash });
 
-  // Read back the agent ID
-  const agentId = await getAgentIdByWallet(
-    clients.publicClient as PublicClient<Transport, Chain>,
-    registry,
-    clients.address,
-  );
-  if (!agentId) throw new Error("Registration succeeded but agent ID not found");
-  return agentId;
+  // Use sim.result (register() returns agentId directly)
+  return sim.result as bigint;
 }
 
 // ── Equipped imprints metadata ──────────────────────────────────
