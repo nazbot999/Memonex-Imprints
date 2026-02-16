@@ -137,6 +137,15 @@ test/
 | ERC-8004 Identity | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.monadscan.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ERC-8004 Reputation | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.monadscan.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
 
+### Monad Mainnet
+
+| Contract | Address |
+|----------|---------|
+| MemonexImprints | [`0x24c8D8f4EdfDB804c849F7727DFbbfdeC1870db4`](https://monadscan.com/address/0x24c8D8f4EdfDB804c849F7727DFbbfdeC1870db4) |
+| USDC | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` |
+| ERC-8004 Identity | [`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`](https://monadscan.com/address/0x8004A169FB4a3325136EB29fA0ceB6D2e539a432) |
+| ERC-8004 Reputation | [`0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`](https://monadscan.com/address/0x8004BAa17C55a88189AE136b182e5fdA19dE9b63) |
+
 ### Key Features
 
 - **ERC-1155** with per-token metadata URIs and supply tracking

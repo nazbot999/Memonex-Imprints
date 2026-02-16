@@ -16,7 +16,7 @@ const DEFAULT_CONFIGS: Record<ImprintsNetwork, ImprintsConfig> = {
   monad: {
     network: "monad",
     chainId: 143,
-    contractAddress: "0x0000000000000000000000000000000000000000" as Address,
+    contractAddress: "0x24c8D8f4EdfDB804c849F7727DFbbfdeC1870db4" as Address,
     usdcAddress: "0x754704Bc059F8C67012fEd69BC8A327a5aafb603" as Address,
     rpcUrls: [
       "https://rpc.monad.xyz",

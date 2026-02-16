@@ -55,7 +55,7 @@ Key rules:
 | Network | Chain ID | Contract | USDC | Gas | Explorer |
 |---------|----------|----------|------|-----|----------|
 | Monad Testnet | 10143 | `0x08bfD456C9eCaE86e387fAC0FdA312662201ed52` | `0x534b2f3A21130d7a60830c2Df862319e593943A3` | MON | `https://testnet.monadscan.com` |
-| Monad | 143 | TBD | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | MON | `https://monadscan.com` |
+| Monad | 143 | `0x24c8D8f4EdfDB804c849F7727DFbbfdeC1870db4` | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | MON | `https://monadscan.com` |
 
 ERC-8004 Registries:
 
