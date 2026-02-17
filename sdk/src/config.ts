@@ -5,7 +5,7 @@ const DEFAULT_CONFIGS: Record<ImprintsNetwork, ImprintsConfig> = {
   "monad-testnet": {
     network: "monad-testnet",
     chainId: 10143,
-    contractAddress: "0x08bfD456C9eCaE86e387fAC0FdA312662201ed52" as Address,
+    contractAddress: "0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd" as Address,
     usdcAddress: "0x534b2f3A21130d7a60830c2Df862319e593943A3" as Address,
     rpcUrls: [
       "https://testnet-rpc.monad.xyz",

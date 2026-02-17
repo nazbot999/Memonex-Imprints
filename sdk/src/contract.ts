@@ -157,7 +157,9 @@ export async function mintFromCollection(
 ): Promise<MintFromCollectionResult> {
   const collection = await getCollection(clients, collectionId);
   const totalCost = collection.mintPrice * amount;
-  await ensureUsdcAllowance(clients, totalCost);
+  if (totalCost > 0n) {
+    await ensureUsdcAllowance(clients, totalCost);
+  }
 
   const hash = await clients.walletClient.writeContract({
     address: clients.config.contractAddress,
@@ -204,6 +206,66 @@ export async function mintFromCollection(
     requestedAmount: amount,
     outcomes,
   };
+}
+
+export async function addToAllowlist(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  wallets: Address[],
+): Promise<Hex> {
+  const hash = await clients.walletClient.writeContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "addToAllowlist",
+    args: [collectionId, wallets],
+  });
+  await clients.publicClient.waitForTransactionReceipt({ hash });
+  return hash;
+}
+
+export async function removeFromAllowlist(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  wallets: Address[],
+): Promise<Hex> {
+  const hash = await clients.walletClient.writeContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "removeFromAllowlist",
+    args: [collectionId, wallets],
+  });
+  await clients.publicClient.waitForTransactionReceipt({ hash });
+  return hash;
+}
+
+export async function setAllowlistRequired(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  required: boolean,
+): Promise<Hex> {
+  const hash = await clients.walletClient.writeContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "setAllowlistRequired",
+    args: [collectionId, required],
+  });
+  await clients.publicClient.waitForTransactionReceipt({ hash });
+  return hash;
+}
+
+export async function setClaimLimit(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  maxPerWallet: bigint,
+): Promise<Hex> {
+  const hash = await clients.walletClient.writeContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "setClaimLimit",
+    args: [collectionId, maxPerWallet],
+  });
+  await clients.publicClient.waitForTransactionReceipt({ hash });
+  return hash;
 }
 
 // ── Secondary market ────────────────────────────────────────────
@@ -568,6 +630,50 @@ export async function getCollection(clients: ImprintsClients, collectionId: bigi
     active: r.active,
     creator: r.creator,
   };
+}
+
+export async function isAllowlisted(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  wallet: Address,
+): Promise<boolean> {
+  return (await clients.publicClient.readContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "allowlisted",
+    args: [collectionId, wallet],
+  })) as boolean;
+}
+
+export async function getAllowlistRequired(clients: ImprintsClients, collectionId: bigint): Promise<boolean> {
+  return (await clients.publicClient.readContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "allowlistRequired",
+    args: [collectionId],
+  })) as boolean;
+}
+
+export async function getClaimLimit(clients: ImprintsClients, collectionId: bigint): Promise<bigint> {
+  return (await clients.publicClient.readContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "claimLimit",
+    args: [collectionId],
+  })) as bigint;
+}
+
+export async function getClaimedCount(
+  clients: ImprintsClients,
+  collectionId: bigint,
+  wallet: Address,
+): Promise<bigint> {
+  return (await clients.publicClient.readContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "claimedCount",
+    args: [collectionId, wallet],
+  })) as bigint;
 }
 
 export async function getCollectionAvailability(

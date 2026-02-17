@@ -39,6 +39,13 @@ interface IMemonexImprints {
         address creator;
     }
 
+    // ── Errors ──────────────────────────────────────────────────────
+
+    error AllowlistRequired();
+    error NotAllowlisted();
+    error ClaimLimitExceeded();
+    error InvalidCollection(uint256 collectionId);
+
     // ── Events ──────────────────────────────────────────────────────
 
     event ImprintTypeCreated(
@@ -130,6 +137,12 @@ interface IMemonexImprints {
 
     event CollectionCreatorAuthorizationUpdated(address indexed account, bool authorized);
 
+    event AllowlistUpdated(uint256 indexed collectionId, address indexed wallet, bool status);
+
+    event AllowlistRequirementChanged(uint256 indexed collectionId, bool required);
+
+    event ClaimLimitChanged(uint256 indexed collectionId, uint256 limit);
+
     // ── Admin ──────────────────────────────────────────────────────
 
     function setTreasury(address newTreasury) external;
@@ -179,6 +192,14 @@ interface IMemonexImprints {
 
     function activateCollection(uint256 collectionId) external;
 
+    function addToAllowlist(uint256 collectionId, address[] calldata wallets) external;
+
+    function removeFromAllowlist(uint256 collectionId, address[] calldata wallets) external;
+
+    function setAllowlistRequired(uint256 collectionId, bool required) external;
+
+    function setClaimLimit(uint256 collectionId, uint256 maxPerWallet) external;
+
     // ── Primary sale ───────────────────────────────────────────────
 
     function purchase(uint256 tokenId, uint256 amount) external;
@@ -220,6 +241,14 @@ interface IMemonexImprints {
     function getListing(uint256 tokenId, address seller) external view returns (HolderListing memory);
 
     function getCollection(uint256 collectionId) external view returns (Collection memory);
+
+    function allowlisted(uint256 collectionId, address wallet) external view returns (bool);
+
+    function allowlistRequired(uint256 collectionId) external view returns (bool);
+
+    function claimLimit(uint256 collectionId) external view returns (uint256);
+
+    function claimedCount(uint256 collectionId, address wallet) external view returns (uint256);
 
     function getCollectionAvailability(uint256 collectionId)
         external

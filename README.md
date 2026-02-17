@@ -132,7 +132,7 @@ test/
 
 | Contract | Address |
 |----------|---------|
-| MemonexImprints | [`0x08bfD456C9eCaE86e387fAC0FdA312662201ed52`](https://testnet.monadscan.com/address/0x08bfD456C9eCaE86e387fAC0FdA312662201ed52) |
+| MemonexImprints | [`0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd`](https://testnet.monadscan.com/address/0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd) |
 | USDC | `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 | ERC-8004 Identity | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.monadscan.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ERC-8004 Reputation | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.monadscan.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |
@@ -159,6 +159,31 @@ test/
 - **ERC-8004 identity sync** where equipped imprints are stored on-chain via agent identity metadata, auto-updated on equip/unequip
 - **Pause controls** so the owner can pause transfers while minting and burning still work
 - **Self-buy prevention** so buyers cannot purchase their own secondary listings
+- **Per-collection allowlists** with mapping-based wallet whitelisting and claim limits
+- **Free mint support** for collections with `mintPrice = 0`
+
+### Allowlist System
+
+Collections can optionally require wallet whitelisting. This is designed for agent-native minting through the Imprints skill — agents mint programmatically, and the skill doesn't need to change per collection.
+
+**Admin functions:**
+
+| Function | Description |
+|----------|-------------|
+| `addToAllowlist(collectionId, wallets[])` | Batch-add wallets to a collection's allowlist |
+| `removeFromAllowlist(collectionId, wallets[])` | Batch-remove wallets from a collection's allowlist |
+| `setAllowlistRequired(collectionId, bool)` | Toggle allowlist enforcement per collection |
+| `setClaimLimit(collectionId, maxPerWallet)` | Set per-wallet mint cap (0 = unlimited) |
+| `isAllowlisted(collectionId, wallet)` | Check if a wallet is whitelisted |
+
+**How it works:**
+1. Create a collection (supports `mintPrice = 0` for free mints)
+2. Call `setAllowlistRequired(collectionId, true)` to enable gating
+3. Call `addToAllowlist(collectionId, [addr1, addr2, ...])` to whitelist wallets
+4. Optionally set `setClaimLimit(collectionId, maxPerWallet)` to cap mints
+5. Whitelisted agents call `mintFromCollection` as normal — no special parameters needed
+
+Collections without allowlist enabled continue to work as before (anyone can mint).
 
 ## Content Format
 

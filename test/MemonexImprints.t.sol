@@ -81,6 +81,9 @@ contract MemonexImprintsTest is Test {
     event CollectionMint(address indexed user, uint256 indexed collectionId, uint256 indexed tokenId, uint256 amount);
     event CollectionStatusUpdated(uint256 indexed collectionId, bool active);
     event CollectionCreatorAuthorizationUpdated(address indexed account, bool authorized);
+    event AllowlistUpdated(uint256 indexed collectionId, address indexed wallet, bool status);
+    event AllowlistRequirementChanged(uint256 indexed collectionId, bool required);
+    event ClaimLimitChanged(uint256 indexed collectionId, uint256 limit);
 
     function setUp() public {
         usdc = new MockUSDC();
@@ -298,7 +301,7 @@ contract MemonexImprintsTest is Test {
         imprints.setApprovalForAll(address(imprints), true);
         imprints.listForSale(tid, 1, 10e6, 0);
 
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.ListingPriceMismatch.selector, tid, seller, 10e6, 11e6));
+        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.ListingPriceMismatch.selector, tid, seller));
         imprints.listForSale(tid, 1, 11e6, 0);
         vm.stopPrank();
     }
@@ -483,6 +486,16 @@ contract MemonexImprintsTest is Test {
         assertEq(imprints.platformFeeBps(), 300);
     }
 
+    function test_setPlatformFeeBps_atMaxFeeBps() public {
+        imprints.setPlatformFeeBps(500); // MAX_FEE_BPS = 500
+        assertEq(imprints.platformFeeBps(), 500);
+    }
+
+    function test_setPlatformFeeBps_exceedsMaxFeeBps_reverts() public {
+        vm.expectRevert(MemonexImprints.InvalidBps.selector);
+        imprints.setPlatformFeeBps(501);
+    }
+
     function test_setPlatformFeeBps_invalid_reverts() public {
         vm.expectRevert(MemonexImprints.InvalidBps.selector);
         imprints.setPlatformFeeBps(10_001);
@@ -490,15 +503,28 @@ contract MemonexImprintsTest is Test {
 
     function test_setSecondaryFeeBps_emitsAndUpdates() public {
         vm.expectEmit(false, false, true, true, address(imprints));
-        emit SecondaryFeeBpsUpdated(SECONDARY_BPS, 750);
-        imprints.setSecondaryFeeBps(750);
+        emit SecondaryFeeBpsUpdated(SECONDARY_BPS, 400);
+        imprints.setSecondaryFeeBps(400);
 
-        assertEq(imprints.secondaryFeeBps(), 750);
+        assertEq(imprints.secondaryFeeBps(), 400);
+    }
+
+    function test_setSecondaryFeeBps_exceedsMaxFeeBps_reverts() public {
+        vm.expectRevert(MemonexImprints.InvalidBps.selector);
+        imprints.setSecondaryFeeBps(501);
     }
 
     function test_setSecondaryFeeBps_bounds_reverts() public {
         vm.expectRevert(MemonexImprints.InvalidBps.selector);
         imprints.setSecondaryFeeBps(10_001);
+    }
+
+    function test_constructor_exceedsMaxFeeBps_reverts() public {
+        vm.expectRevert(MemonexImprints.InvalidBps.selector);
+        new MemonexImprints(address(usdc), treasury, 501, SECONDARY_BPS);
+
+        vm.expectRevert(MemonexImprints.InvalidBps.selector);
+        new MemonexImprints(address(usdc), treasury, PLATFORM_BPS, 501);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -519,7 +545,7 @@ contract MemonexImprintsTest is Test {
         uint256 tid = _addDefault();
         imprints.adminMint(buyer, tid, 10, "");
 
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.PromoReserveExceeded.selector, tid, 1, 0));
+        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.PromoReserveExceeded.selector, tid));
         imprints.adminMint(buyer, tid, 1, "");
     }
 
@@ -530,7 +556,7 @@ contract MemonexImprintsTest is Test {
         imprints.adminMint(buyer, tid, 3, ""); // exhaust promo reserve and supply
 
         // Next admin mint hits promo reserve exceeded (0 remaining)
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.PromoReserveExceeded.selector, tid, 1, 0));
+        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.PromoReserveExceeded.selector, tid));
         imprints.adminMint(buyer, tid, 1, "");
     }
 
@@ -1003,7 +1029,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_getCollection_nonexistent_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.InvalidCollection.selector, 42));
+        vm.expectRevert(abi.encodeWithSelector(IMemonexImprints.InvalidCollection.selector, 42));
         imprints.getCollection(42);
     }
 
@@ -1183,7 +1209,7 @@ contract MemonexImprintsTest is Test {
 
     function test_mintFromCollection_invalidCollection_reverts() public {
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.InvalidCollection.selector, 777));
+        vm.expectRevert(abi.encodeWithSelector(IMemonexImprints.InvalidCollection.selector, 777));
         imprints.mintFromCollection(777, 1);
     }
 
@@ -1263,6 +1289,271 @@ contract MemonexImprintsTest is Test {
         // Non-existent token: collectionOnly defaults to false, minted defaults to 0
         // ERC1155URIStorage will just return "" for non-existent tokens
         assertEq(imprints.uri(999), "");
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Allowlist + claim limits + free mint
+    // ══════════════════════════════════════════════════════════════
+
+    function test_addToAllowlist_ownerBatchAndRemove() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        address[] memory wallets = new address[](2);
+        wallets[0] = buyer;
+        wallets[1] = buyer2;
+
+        vm.expectEmit(true, true, false, true, address(imprints));
+        emit AllowlistUpdated(collectionId, buyer, true);
+        vm.expectEmit(true, true, false, true, address(imprints));
+        emit AllowlistUpdated(collectionId, buyer2, true);
+        imprints.addToAllowlist(collectionId, wallets);
+
+        assertTrue(imprints.allowlisted(collectionId, buyer));
+        assertTrue(imprints.allowlisted(collectionId, buyer2));
+
+        vm.expectEmit(true, true, false, true, address(imprints));
+        emit AllowlistUpdated(collectionId, buyer, false);
+        imprints.removeFromAllowlist(collectionId, wallets);
+
+        assertFalse(imprints.allowlisted(collectionId, buyer));
+        assertFalse(imprints.allowlisted(collectionId, buyer2));
+    }
+
+    function test_addToAllowlist_creatorCanBatchAdd() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+        imprints.setCollectionCreatorAuthorization(collectionCurator, true);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(collectionCurator, 1e6, tokenIds, weights);
+
+        address[] memory wallets = new address[](2);
+        wallets[0] = buyer;
+        wallets[1] = buyer2;
+
+        vm.prank(collectionCurator);
+        imprints.addToAllowlist(collectionId, wallets);
+
+        assertTrue(imprints.allowlisted(collectionId, buyer));
+        assertTrue(imprints.allowlisted(collectionId, buyer2));
+    }
+
+    function test_allowlistAdminFunctions_nonAdminRevert() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        address[] memory wallets = new address[](1);
+        wallets[0] = buyer;
+
+        vm.startPrank(buyer2);
+        vm.expectRevert(MemonexImprints.NotCollectionAdmin.selector);
+        imprints.addToAllowlist(collectionId, wallets);
+
+        vm.expectRevert(MemonexImprints.NotCollectionAdmin.selector);
+        imprints.removeFromAllowlist(collectionId, wallets);
+
+        vm.expectRevert(MemonexImprints.NotCollectionAdmin.selector);
+        imprints.setAllowlistRequired(collectionId, true);
+
+        vm.expectRevert(MemonexImprints.NotCollectionAdmin.selector);
+        imprints.setClaimLimit(collectionId, 1);
+        vm.stopPrank();
+    }
+
+    function test_setAllowlistRequired_toggle() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        vm.expectEmit(true, false, false, true, address(imprints));
+        emit AllowlistRequirementChanged(collectionId, true);
+        imprints.setAllowlistRequired(collectionId, true);
+        assertTrue(imprints.allowlistRequired(collectionId));
+
+        vm.expectEmit(true, false, false, true, address(imprints));
+        emit AllowlistRequirementChanged(collectionId, false);
+        imprints.setAllowlistRequired(collectionId, false);
+        assertFalse(imprints.allowlistRequired(collectionId));
+    }
+
+    function test_mintFromCollection_allowlistRequired() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+        imprints.setAllowlistRequired(collectionId, true);
+
+        vm.prank(buyer);
+        vm.expectRevert(IMemonexImprints.NotAllowlisted.selector);
+        imprints.mintFromCollection(collectionId, 1);
+
+        address[] memory wallets = new address[](1);
+        wallets[0] = buyer;
+        imprints.addToAllowlist(collectionId, wallets);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 1);
+
+        assertEq(imprints.balanceOf(buyer, t1), 1);
+        assertEq(imprints.claimedCount(collectionId, buyer), 1);
+    }
+
+    function test_mintFromCollection_allowlistOff_anyoneCanMint() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 1);
+
+        vm.prank(buyer2);
+        imprints.mintFromCollection(collectionId, 1);
+
+        assertEq(imprints.balanceOf(buyer, t1), 1);
+        assertEq(imprints.balanceOf(buyer2, t1), 1);
+    }
+
+    function test_createCollection_zeroMintPrice_allowed() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 0, tokenIds, weights);
+        IMemonexImprints.Collection memory collection = imprints.getCollection(collectionId);
+        assertEq(collection.mintPrice, 0);
+    }
+
+    function test_mintFromCollection_freeMint_noUsdcTransfers() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+        imprints.setCollectionCreatorAuthorization(collectionCurator, true);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(collectionCurator, 0, tokenIds, weights);
+
+        uint256 buyerBefore = usdc.balanceOf(buyer);
+        uint256 treasuryBefore = usdc.balanceOf(treasury);
+        uint256 curatorBefore = usdc.balanceOf(collectionCurator);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 2);
+
+        assertEq(imprints.balanceOf(buyer, t1), 2);
+        assertEq(usdc.balanceOf(buyer), buyerBefore);
+        assertEq(usdc.balanceOf(treasury), treasuryBefore);
+        assertEq(usdc.balanceOf(collectionCurator), curatorBefore);
+    }
+
+    function test_setClaimLimit_andEnforce() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        vm.expectEmit(true, false, false, true, address(imprints));
+        emit ClaimLimitChanged(collectionId, 2);
+        imprints.setClaimLimit(collectionId, 2);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 1);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 1);
+
+        assertEq(imprints.claimedCount(collectionId, buyer), 2);
+
+        vm.prank(buyer);
+        vm.expectRevert(IMemonexImprints.ClaimLimitExceeded.selector);
+        imprints.mintFromCollection(collectionId, 1);
+    }
+
+    function test_claimLimit_zeroMeansUnlimited() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+        imprints.setClaimLimit(collectionId, 0);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 3);
+
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 4);
+
+        assertEq(imprints.claimedCount(collectionId, buyer), 7);
+    }
+
+    function test_allowlistBatch_edgeCases() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        // Empty batch should be a no-op
+        address[] memory emptyWallets = new address[](0);
+        imprints.addToAllowlist(collectionId, emptyWallets);
+        imprints.removeFromAllowlist(collectionId, emptyWallets);
+
+        // Duplicate addresses should remain idempotent
+        address[] memory duplicates = new address[](2);
+        duplicates[0] = buyer;
+        duplicates[1] = buyer;
+        imprints.addToAllowlist(collectionId, duplicates);
+        assertTrue(imprints.allowlisted(collectionId, buyer));
+
+        // Removing non-existent entry should be a no-op
+        address[] memory notListed = new address[](1);
+        notListed[0] = buyer2;
+        imprints.removeFromAllowlist(collectionId, notListed);
+        assertFalse(imprints.allowlisted(collectionId, buyer2));
     }
 
     function test_blindMint_distributionSanity() public {

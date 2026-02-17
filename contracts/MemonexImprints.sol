@@ -35,6 +35,7 @@ contract MemonexImprints is
     // =============================================================
 
     uint96 public constant MAX_BPS = 10_000;
+    uint96 public constant MAX_FEE_BPS = 500; // 5% hard cap on platform/secondary fees
 
     uint8 internal constant CHANGE_MINT = 0;
     uint8 internal constant CHANGE_TRANSFER_IN = 1;
@@ -57,32 +58,31 @@ contract MemonexImprints is
     error EmptyURI();
     error TokenNotFound(uint256 tokenId);
     error TokenInactive(uint256 tokenId);
-    error SupplyExceeded(uint256 tokenId, uint256 requestedTotalMinted, uint256 maxSupply);
+    error SupplyExceeded(uint256 tokenId);
     error NotCreatorOrOwner();
-    error NotListed(uint256 tokenId, address seller);
-    error InsufficientListingAmount(uint256 tokenId, address seller, uint256 listed, uint256 requested);
-    error ListingPriceMismatch(uint256 tokenId, address seller, uint256 currentUnitPrice, uint256 requestedUnitPrice);
-    error InvalidERC1155Sender(address sender);
+    error NotListed(uint256 tokenId);
+    error InsufficientListingAmount(uint256 tokenId, address seller);
+    error ListingPriceMismatch(uint256 tokenId, address seller);
+    error InvalidERC1155Sender();
     error SelfPurchase();
     error TransfersPaused();
     error InvalidFeeSplit();
     error InvalidSignature();
     error DeadlineExpired();
     error ListingExpired();
-    error SlippageExceeded(uint256 totalCost, uint256 maxTotalPrice);
-    error AdminMintIsLocked(uint256 tokenId);
-    error PromoReserveExceeded(uint256 tokenId, uint256 requested, uint256 remaining);
+    error SlippageExceeded();
+    error AdminMintIsLocked();
+    error PromoReserveExceeded(uint256 tokenId);
     error PromoReserveExceedsMaxSupply();
 
-    error InvalidCollection(uint256 collectionId);
     error CollectionInactive(uint256 collectionId);
     error CollectionEmpty();
     error CollectionArrayLengthMismatch();
     error InvalidWeight(uint256 index);
-    error DuplicateTokenInCollection(uint256 tokenId);
-    error CollectionSoldOut(uint256 collectionId);
+    error DuplicateTokenInCollection();
+    error CollectionSoldOut();
     error NotCollectionAdmin();
-    error TokenCollectionOnly(uint256 tokenId);
+    error TokenCollectionOnly();
 
     // =============================================================
     // Storage
@@ -107,6 +107,11 @@ contract MemonexImprints is
     mapping(uint256 collectionId => Collection) private _collections;
     mapping(address account => bool) public authorizedCollectionCreators;
 
+    mapping(uint256 collectionId => mapping(address wallet => bool)) public allowlisted;
+    mapping(uint256 collectionId => bool) public allowlistRequired;
+    mapping(uint256 collectionId => uint256 maxPerWallet) public claimLimit;
+    mapping(uint256 collectionId => mapping(address wallet => uint256 count)) public claimedCount;
+
     /// @notice Nonce used in blind mint pseudo-randomness seed derivation.
     uint256 private _mintNonce;
 
@@ -120,7 +125,7 @@ contract MemonexImprints is
         EIP712("MemonexImprints", "1")
     {
         if (usdc_ == address(0) || treasury_ == address(0)) revert ZeroAddress();
-        if (platformFeeBps_ > MAX_BPS || secondaryFeeBps_ > MAX_BPS) revert InvalidBps();
+        if (platformFeeBps_ > MAX_FEE_BPS || secondaryFeeBps_ > MAX_FEE_BPS) revert InvalidBps();
 
         usdc = IERC20(usdc_);
         treasury = treasury_;
@@ -152,7 +157,7 @@ contract MemonexImprints is
 
     /// @inheritdoc IMemonexImprints
     function setPlatformFeeBps(uint96 newFeeBps) external onlyOwner {
-        if (newFeeBps > MAX_BPS) revert InvalidBps();
+        if (newFeeBps > MAX_FEE_BPS) revert InvalidBps();
         uint96 oldFeeBps = platformFeeBps;
         platformFeeBps = newFeeBps;
         emit PlatformFeeBpsUpdated(oldFeeBps, newFeeBps);
@@ -160,7 +165,7 @@ contract MemonexImprints is
 
     /// @inheritdoc IMemonexImprints
     function setSecondaryFeeBps(uint96 newFeeBps) external onlyOwner {
-        if (newFeeBps > MAX_BPS) revert InvalidBps();
+        if (newFeeBps > MAX_FEE_BPS) revert InvalidBps();
         uint96 oldFeeBps = secondaryFeeBps;
         secondaryFeeBps = newFeeBps;
         emit SecondaryFeeBpsUpdated(oldFeeBps, newFeeBps);
@@ -259,7 +264,6 @@ contract MemonexImprints is
     ) external returns (uint256 collectionId) {
         if (!_isCollectionCreatorAuthorized(msg.sender)) revert NotCollectionAdmin();
         if (bytes(name).length == 0) revert EmptyURI();
-        if (mintPrice == 0) revert InvalidPrice();
 
         uint256 len = tokenIds.length;
         if (len == 0) revert CollectionEmpty();
@@ -272,7 +276,7 @@ contract MemonexImprints is
             if (rarityWeights[i] == 0) revert InvalidWeight(i);
 
             for (uint256 j = i + 1; j < len; ++j) {
-                if (tokenId == tokenIds[j]) revert DuplicateTokenInCollection(tokenId);
+                if (tokenId == tokenIds[j]) revert DuplicateTokenInCollection();
             }
         }
 
@@ -309,6 +313,46 @@ contract MemonexImprints is
         emit CollectionStatusUpdated(collectionId, true);
     }
 
+    /// @inheritdoc IMemonexImprints
+    function addToAllowlist(uint256 collectionId, address[] calldata wallets) external {
+        _getCollectionAsAdmin(collectionId);
+
+        uint256 len = wallets.length;
+        for (uint256 i = 0; i < len; ++i) {
+            address wallet = wallets[i];
+            allowlisted[collectionId][wallet] = true;
+            emit AllowlistUpdated(collectionId, wallet, true);
+        }
+    }
+
+    /// @inheritdoc IMemonexImprints
+    function removeFromAllowlist(uint256 collectionId, address[] calldata wallets) external {
+        _getCollectionAsAdmin(collectionId);
+
+        uint256 len = wallets.length;
+        for (uint256 i = 0; i < len; ++i) {
+            address wallet = wallets[i];
+            allowlisted[collectionId][wallet] = false;
+            emit AllowlistUpdated(collectionId, wallet, false);
+        }
+    }
+
+    /// @inheritdoc IMemonexImprints
+    function setAllowlistRequired(uint256 collectionId, bool required) external {
+        _getCollectionAsAdmin(collectionId);
+
+        allowlistRequired[collectionId] = required;
+        emit AllowlistRequirementChanged(collectionId, required);
+    }
+
+    /// @inheritdoc IMemonexImprints
+    function setClaimLimit(uint256 collectionId, uint256 maxPerWallet) external {
+        _getCollectionAsAdmin(collectionId);
+
+        claimLimit[collectionId] = maxPerWallet;
+        emit ClaimLimitChanged(collectionId, maxPerWallet);
+    }
+
     // =============================================================
     // Primary sale
     // =============================================================
@@ -318,12 +362,12 @@ contract MemonexImprints is
         if (amount == 0) revert InvalidAmount();
 
         ImprintType storage imprint = _getImprint(tokenId);
-        if (imprint.collectionOnly) revert TokenCollectionOnly(tokenId);
+        if (imprint.collectionOnly) revert TokenCollectionOnly();
         if (!imprint.active) revert TokenInactive(tokenId);
 
         uint256 requestedTotalMinted = uint256(imprint.minted) + amount;
         if (requestedTotalMinted > uint256(imprint.maxSupply)) {
-            revert SupplyExceeded(tokenId, requestedTotalMinted, uint256(imprint.maxSupply));
+            revert SupplyExceeded(tokenId);
         }
 
         uint256 totalPaid = imprint.primaryPrice * amount;
@@ -357,17 +401,30 @@ contract MemonexImprints is
         Collection storage collection = _getCollection(collectionId);
         if (!collection.active) revert CollectionInactive(collectionId);
 
-        uint256 totalPaid = collection.mintPrice * amount;
-        uint256 platformFee = (totalPaid * platformFeeBps) / MAX_BPS;
-        uint256 creatorRevenue = totalPaid - platformFee;
-
-        usdc.safeTransferFrom(msg.sender, address(this), totalPaid);
-
-        if (platformFee > 0) {
-            usdc.safeTransfer(treasury, platformFee);
+        if (allowlistRequired[collectionId] && !allowlisted[collectionId][msg.sender]) {
+            revert NotAllowlisted();
         }
-        if (creatorRevenue > 0) {
-            usdc.safeTransfer(collection.creator, creatorRevenue);
+
+        uint256 newClaimed = claimedCount[collectionId][msg.sender] + amount;
+        uint256 maxPerWallet = claimLimit[collectionId];
+        if (maxPerWallet != 0 && newClaimed > maxPerWallet) {
+            revert ClaimLimitExceeded();
+        }
+        claimedCount[collectionId][msg.sender] = newClaimed;
+
+        uint256 totalPaid = collection.mintPrice * amount;
+        if (totalPaid > 0) {
+            uint256 platformFee = (totalPaid * platformFeeBps) / MAX_BPS;
+            uint256 creatorRevenue = totalPaid - platformFee;
+
+            usdc.safeTransferFrom(msg.sender, address(this), totalPaid);
+
+            if (platformFee > 0) {
+                usdc.safeTransfer(treasury, platformFee);
+            }
+            if (creatorRevenue > 0) {
+                usdc.safeTransfer(collection.creator, creatorRevenue);
+            }
         }
 
         uint256 tokenSlots = collection.tokenIds.length;
@@ -381,7 +438,7 @@ contract MemonexImprints is
 
             uint256 requestedTotalMinted = uint256(imprint.minted) + 1;
             if (requestedTotalMinted > uint256(imprint.maxSupply)) {
-                revert SupplyExceeded(selectedTokenId, requestedTotalMinted, uint256(imprint.maxSupply));
+                revert SupplyExceeded(selectedTokenId);
             }
             imprint.minted = uint128(requestedTotalMinted);
 
@@ -416,18 +473,18 @@ contract MemonexImprints is
         if (amount == 0) revert InvalidAmount();
 
         ImprintType storage imprint = _getImprint(tokenId);
-        if (imprint.adminMintLocked) revert AdminMintIsLocked(tokenId);
+        if (imprint.adminMintLocked) revert AdminMintIsLocked();
 
         // Check promo reserve
         uint256 newPromoMinted = uint256(imprint.promoMinted) + amount;
         if (newPromoMinted > uint256(imprint.promoReserve)) {
-            revert PromoReserveExceeded(tokenId, amount, uint256(imprint.promoReserve) - uint256(imprint.promoMinted));
+            revert PromoReserveExceeded(tokenId);
         }
 
         // Check overall supply
         uint256 requestedTotalMinted = uint256(imprint.minted) + amount;
         if (requestedTotalMinted > uint256(imprint.maxSupply)) {
-            revert SupplyExceeded(tokenId, requestedTotalMinted, uint256(imprint.maxSupply));
+            revert SupplyExceeded(tokenId);
         }
 
         imprint.promoMinted = uint128(newPromoMinted);
@@ -457,7 +514,7 @@ contract MemonexImprints is
         HolderListing storage listing = _holderListings[tokenId][msg.sender];
         if (listing.active) {
             if (listing.unitPrice != unitPrice) {
-                revert ListingPriceMismatch(tokenId, msg.sender, listing.unitPrice, unitPrice);
+                revert ListingPriceMismatch(tokenId, msg.sender);
             }
 
             uint256 newAmount = uint256(listing.amount) + amount;
@@ -478,7 +535,7 @@ contract MemonexImprints is
     /// @inheritdoc IMemonexImprints
     function cancelListing(uint256 tokenId) external {
         HolderListing storage listing = _holderListings[tokenId][msg.sender];
-        if (!listing.active) revert NotListed(tokenId, msg.sender);
+        if (!listing.active) revert NotListed(tokenId);
 
         uint256 escrowed = _escrowedBalances[tokenId][msg.sender];
 
@@ -506,15 +563,15 @@ contract MemonexImprints is
         _getImprint(tokenId);
 
         HolderListing storage listing = _holderListings[tokenId][seller];
-        if (!listing.active) revert NotListed(tokenId, seller);
+        if (!listing.active) revert NotListed(tokenId);
         if (listing.expiry != 0 && block.timestamp > listing.expiry) revert ListingExpired();
         if (listing.amount < amount) {
-            revert InsufficientListingAmount(tokenId, seller, listing.amount, amount);
+            revert InsufficientListingAmount(tokenId, seller);
         }
 
         uint256 unitPrice = uint256(listing.unitPrice);
         uint256 totalPaid = unitPrice * amount;
-        if (totalPaid > maxTotalPrice) revert SlippageExceeded(totalPaid, maxTotalPrice);
+        if (totalPaid > maxTotalPrice) revert SlippageExceeded();
 
         // Effects: decrement listing and escrow before external calls
         listing.amount -= uint128(amount);
@@ -604,7 +661,7 @@ contract MemonexImprints is
         onlyOwner
     {
         if (tokenContract == address(0) || to == address(0)) revert ZeroAddress();
-        if (tokenContract == address(this)) revert InvalidERC1155Sender(tokenContract);
+        if (tokenContract == address(this)) revert InvalidERC1155Sender();
 
         ERC1155(tokenContract).safeTransferFrom(address(this), to, tokenId, amount, data);
     }
@@ -689,7 +746,7 @@ contract MemonexImprints is
     // =============================================================
 
     function onERC1155Received(address, address, uint256, uint256, bytes calldata) external view returns (bytes4) {
-        if (msg.sender != address(this)) revert InvalidERC1155Sender(msg.sender);
+        if (msg.sender != address(this)) revert InvalidERC1155Sender();
         return this.onERC1155Received.selector;
     }
 
@@ -698,7 +755,7 @@ contract MemonexImprints is
         view
         returns (bytes4)
     {
-        if (msg.sender != address(this)) revert InvalidERC1155Sender(msg.sender);
+        if (msg.sender != address(this)) revert InvalidERC1155Sender();
         return this.onERC1155BatchReceived.selector;
     }
 
@@ -755,6 +812,11 @@ contract MemonexImprints is
         if (msg.sender != owner() && msg.sender != collection.creator) revert NotCollectionAdmin();
     }
 
+    function _getCollectionAsAdmin(uint256 collectionId) internal view returns (Collection storage collection) {
+        collection = _getCollection(collectionId);
+        _onlyCollectionAdmin(collection);
+    }
+
     function _isCollectionCreatorAuthorized(address account) internal view returns (bool) {
         return account == owner() || authorizedCollectionCreators[account];
     }
@@ -786,7 +848,7 @@ contract MemonexImprints is
             }
         }
 
-        if (totalWeight == 0) revert CollectionSoldOut(collectionId);
+        if (totalWeight == 0) revert CollectionSoldOut();
 
         uint256 seed = uint256(keccak256(abi.encodePacked(block.prevrandao, msg.sender, block.timestamp, _mintNonce++)));
 
@@ -808,7 +870,7 @@ contract MemonexImprints is
             }
         }
 
-        revert CollectionSoldOut(collectionId);
+        revert CollectionSoldOut();
     }
 
     /// @dev Emits ERC-8004 hook events on all mint/transfer/burn balance changes.

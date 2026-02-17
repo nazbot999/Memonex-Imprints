@@ -39,6 +39,13 @@ export interface CollectionAvailability {
   totalWeight: bigint;
 }
 
+export interface CollectionAllowlistState {
+  required: boolean;
+  isAllowlisted: boolean;
+  claimLimit: bigint;
+  claimedCount: bigint;
+}
+
 export interface CollectionMintOutcome {
   tokenId: bigint;
   amount: bigint;
