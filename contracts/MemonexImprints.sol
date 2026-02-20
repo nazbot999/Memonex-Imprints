@@ -36,6 +36,7 @@ contract MemonexImprints is
 
     uint96 public constant MAX_BPS = 10_000;
     uint96 public constant MAX_FEE_BPS = 500; // 5% hard cap on platform/secondary fees
+    uint96 public constant MAX_CREATOR_ROYALTY_BPS = 250; // 2.5% cap on creator-registered royalties
 
     uint8 internal constant CHANGE_MINT = 0;
     uint8 internal constant CHANGE_TRANSFER_IN = 1;
@@ -82,7 +83,6 @@ contract MemonexImprints is
     error DuplicateTokenInCollection();
     error CollectionSoldOut();
     error NotCollectionAdmin();
-    error TokenCollectionOnly();
 
     // =============================================================
     // Storage
@@ -189,7 +189,7 @@ contract MemonexImprints is
         uint256 promoReserve
     ) external onlyOwner returns (uint256 tokenId) {
         tokenId = _createImprintType(
-            creator, metadataURI, maxSupply, primaryPrice, royaltyBps, contentHash, promoReserve
+            creator, metadataURI, maxSupply, primaryPrice, royaltyBps, contentHash, promoReserve, true
         );
 
         emit ImprintTypeCreated(tokenId, creator, maxSupply, primaryPrice, royaltyBps, contentHash, metadataURI);
@@ -207,6 +207,7 @@ contract MemonexImprints is
         bytes calldata signature
     ) external returns (uint256 tokenId) {
         if (block.timestamp > deadline) revert DeadlineExpired();
+        if (royaltyBps > MAX_CREATOR_ROYALTY_BPS) revert InvalidBps();
 
         uint256 nonce = creatorNonces[creator];
 
@@ -233,8 +234,8 @@ contract MemonexImprints is
         _usedDigests[digest] = true;
         creatorNonces[creator] = nonce + 1;
 
-        // No promoReserve for creator-registered types
-        tokenId = _createImprintType(creator, metadataURI, maxSupply, primaryPrice, royaltyBps, contentHash, 0);
+        // No promoReserve for creator-registered types; starts inactive pending admin review
+        tokenId = _createImprintType(creator, metadataURI, maxSupply, primaryPrice, royaltyBps, contentHash, 0, false);
 
         emit ImprintTypeCreatedWithSig(
             tokenId, creator, msg.sender, maxSupply, primaryPrice, royaltyBps, contentHash, metadataURI
@@ -284,7 +285,7 @@ contract MemonexImprints is
         Collection storage collection = _collections[collectionId];
         collection.name = name;
         collection.mintPrice = mintPrice;
-        collection.active = true;
+        collection.active = (msg.sender == owner());
         collection.creator = msg.sender;
 
         for (uint256 i = 0; i < len; ++i) {
@@ -354,40 +355,8 @@ contract MemonexImprints is
     }
 
     // =============================================================
-    // Primary sale
+    // Primary sale (collection-based blind minting)
     // =============================================================
-
-    /// @inheritdoc IMemonexImprints
-    function purchase(uint256 tokenId, uint256 amount) external nonReentrant whenNotPaused {
-        if (amount == 0) revert InvalidAmount();
-
-        ImprintType storage imprint = _getImprint(tokenId);
-        if (imprint.collectionOnly) revert TokenCollectionOnly();
-        if (!imprint.active) revert TokenInactive(tokenId);
-
-        uint256 requestedTotalMinted = uint256(imprint.minted) + amount;
-        if (requestedTotalMinted > uint256(imprint.maxSupply)) {
-            revert SupplyExceeded(tokenId);
-        }
-
-        uint256 totalPaid = imprint.primaryPrice * amount;
-        uint256 platformFee = (totalPaid * platformFeeBps) / MAX_BPS;
-        uint256 creatorRevenue = totalPaid - platformFee;
-
-        usdc.safeTransferFrom(msg.sender, address(this), totalPaid);
-
-        if (platformFee > 0) {
-            usdc.safeTransfer(treasury, platformFee);
-        }
-        if (creatorRevenue > 0) {
-            usdc.safeTransfer(imprint.creator, creatorRevenue);
-        }
-
-        imprint.minted = uint128(requestedTotalMinted);
-        _mint(msg.sender, tokenId, amount, "");
-
-        emit ImprintPurchased(msg.sender, tokenId, amount, totalPaid, platformFee, creatorRevenue);
-    }
 
     /// @inheritdoc IMemonexImprints
     function mintFromCollection(uint256 collectionId) external {
@@ -770,7 +739,8 @@ contract MemonexImprints is
         uint256 primaryPrice,
         uint96 royaltyBps,
         bytes32 contentHash,
-        uint256 promoReserve
+        uint256 promoReserve,
+        bool active
     ) internal returns (uint256 tokenId) {
         if (creator == address(0)) revert ZeroAddress();
         if (bytes(metadataURI).length == 0) revert EmptyURI();
@@ -793,9 +763,8 @@ contract MemonexImprints is
             promoMinted: 0,
             primaryPrice: primaryPrice,
             contentHash: contentHash,
-            active: true,
+            active: active,
             adminMintLocked: false,
-            collectionOnly: true,
             metadataURI: metadataURI
         });
 
@@ -912,7 +881,7 @@ contract MemonexImprints is
 
     function uri(uint256 tokenId) public view override(ERC1155, ERC1155URIStorage) returns (string memory) {
         ImprintType storage imprint = _imprintTypes[tokenId];
-        if (imprint.collectionOnly && imprint.minted == 0) {
+        if (imprint.minted == 0) {
             return "";
         }
         return ERC1155URIStorage.uri(tokenId);

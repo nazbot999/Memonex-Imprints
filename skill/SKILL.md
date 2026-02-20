@@ -81,6 +81,10 @@ ERC-8004 Registries:
 | `/imprints transfer <tokenId> <to> [amount]` | Transfer NFT to another wallet |
 | `/imprints status` | Equipped slots, library, USDC balance, listings, agentId |
 | `/imprints verify` | Batch ownership check, auto-unequip lost, regenerate |
+| `/imprints create-imprint` | Creator: register a new imprint type (EIP-712 signed, pending admin review) |
+| `/imprints create-collection` | Creator: create a collection from own imprints (pending admin review) |
+| `/imprints my-collections` | Creator: list collections owned by this wallet with stats |
+| `/imprints manage-allowlist <collectionId>` | Creator: add/remove wallets, toggle enforcement, set claim limits |
 
 ---
 
@@ -503,20 +507,20 @@ console.log(JSON.stringify({
 }));
 ```
 
-### Step 2: Purchase on-chain
+### Step 2: Mint from collection on-chain
 
-This handles USDC approval automatically (the SDK checks allowance and approves if needed).
+All primary mints go through collections (blind minting). The SDK handles USDC approval automatically.
 
 ```typescript
 import dotenv from "dotenv";
 dotenv.config();
-import { createClientsFromEnv, purchaseImprint } from "./src/index.js";
+import { createClientsFromEnv, mintFromCollection } from "./src/index.js";
 
 const clients = createClientsFromEnv();
-const tokenId = BigInt("REPLACE_WITH_TOKEN_ID");
+const collectionId = BigInt("REPLACE_WITH_COLLECTION_ID");
 
-const txHash = await purchaseImprint(clients, tokenId, 1n);
-console.log(JSON.stringify({ txHash, tokenId: Number(tokenId), status: "purchased" }));
+const result = await mintFromCollection(clients, collectionId, 1n);
+console.log(JSON.stringify({ txHash: result.txHash, mintedTokens: result.outcomes.map(o => ({ tokenId: Number(o.tokenId), amount: Number(o.amount) })), status: "minted" }));
 ```
 
 ### Step 3: Authenticate and claim content from delivery API
@@ -1267,7 +1271,7 @@ Content hash = SHA-256 of RFC 8785 canonical JSON (minus `contentHash` field), s
 
 | Module | Key Exports |
 |--------|-------------|
-| `contract.ts` | `createClientsFromEnv`, `purchaseImprint`, `mintFromCollection`, `listImprintForSale`, `buyImprintFromHolder`, `cancelImprintListing`, `getImprintType`, `getCollection`, `getCollectionAvailability`, `ownsImprint`, `getBalanceOf`, `getNextTokenId`, `getNextCollectionId`, `browseAllImprintTypes`, `browseAllCollections`, `transferImprint`, `getUsdcBalance`, `getTokenUri`, `parseUsdc`, `formatUsdc` |
+| `contract.ts` | `createClientsFromEnv`, `mintFromCollection`, `listImprintForSale`, `buyImprintFromHolder`, `cancelImprintListing`, `getImprintType`, `getCollection`, `getCollectionAvailability`, `ownsImprint`, `getBalanceOf`, `getNextTokenId`, `getNextCollectionId`, `browseAllImprintTypes`, `browseAllCollections`, `transferImprint`, `getUsdcBalance`, `getTokenUri`, `parseUsdc`, `formatUsdc`, `registerImprintAsCreator`, `createCollectionAsCreator`, `addToAllowlist`, `removeFromAllowlist`, `setAllowlistRequired`, `setClaimLimit`, `signImprintAuth`, `addImprintTypeWithSig` |
 | `config.ts` | `resolveImprintsConfig` |
 | `delivery.ts` | `createDeliveryClient`, `authVerify`, `claimByPurchase`, `claimByOwnership` |
 | `files.ts` | `ensureImprintDirs`, `saveImprintToSlot`, `removeImprintFromSlot`, `saveToLibrary`, `readEquippedSlots`, `readImprintsState`, `writeImprintsState`, `generateAndWriteActiveImprints`, `checkOwnershipForAll`, `getResolvedPaths` |
@@ -1286,3 +1290,276 @@ Content hash = SHA-256 of RFC 8785 canonical JSON (minus `contentHash` field), s
 - **ERC-8004**: Optional but recommended. Stores equipped imprints on-chain for cross-agent visibility. Best-effort — never blocks a workflow.
 - **Watermark receipts**: Each delivery includes a watermark receipt with `deliveryId`, `recipientWallet`, `deliveredAt`, and `contentHashVerified`.
 - **Max 5 slots**: Agents can equip up to 5 imprints simultaneously. Slot 1 has highest priority.
+
+---
+
+## `/imprints create-imprint`
+
+Register a new imprint type as a creator. Anyone can register an imprint — no authorization required. The imprint uses EIP-712 signed authorization and starts **inactive**, pending admin review before it can be included in collections and minted.
+
+> **Note:** Authorization (`authorizedCollectionCreators`) is only required for creating collections, not for registering individual imprints.
+
+### Step 1: Gather imprint details
+
+Ask the user for:
+- **Name**: Imprint display name
+- **Category**: e.g., "analytical", "creative", "social"
+- **Rarity**: common | uncommon | rare | legendary | mythic
+- **Personality**:
+  - `tone`: Primary communication style
+  - `rules[]`: Behavioral rules
+  - `triggers[]`: Activation triggers
+  - `catchphrases[]`: Signature phrases
+  - `restrictions[]`: Things the imprint avoids
+  - `strength`: Core competency description
+- **Max supply**: Total mintable copies
+- **Primary price**: USDC price per mint (e.g., "5" for 5 USDC)
+- **Royalty BPS**: Royalty on secondary sales (max 250 = 2.5%)
+- **Emblem image**: Optional path to emblem image file
+
+### Step 3: Build canonical JSON, compute hash, pin metadata, register on-chain
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, registerImprintAsCreator, parseUsdc } from "./src/index.js";
+import { computeImprintContentHash } from "./src/hash.js";
+import { buildErc1155Metadata, pinToIpfs } from "./src/metadata.js";
+const clients = createClientsFromEnv();
+
+// Build canonical imprint JSON
+const canonical = {
+  schema: "memonex.imprint.v1",
+  name: "REPLACE_WITH_NAME",
+  rarity: "REPLACE_WITH_RARITY",
+  category: "REPLACE_WITH_CATEGORY",
+  personality: {
+    tone: "REPLACE_WITH_TONE",
+    rules: ["REPLACE_WITH_RULES"],
+    triggers: ["REPLACE_WITH_TRIGGERS"],
+    catchphrases: ["REPLACE_WITH_CATCHPHRASES"],
+    restrictions: ["REPLACE_WITH_RESTRICTIONS"],
+    strength: "REPLACE_WITH_STRENGTH",
+  },
+};
+
+// Compute content hash
+const contentHash = await computeImprintContentHash(canonical);
+
+// Build + pin ERC-1155 metadata to IPFS
+const metadata = buildErc1155Metadata({
+  name: canonical.name,
+  description: `${canonical.name} — ${canonical.category} imprint`,
+  rarity: canonical.rarity,
+  category: canonical.category,
+  personality: canonical.personality,
+  // image: "REPLACE_WITH_IPFS_EMBLEM_URI",
+});
+const metadataURI = await pinToIpfs(metadata, `${canonical.name}-metadata`);
+
+// Register on-chain (EIP-712 signed, starts inactive)
+const deadline = BigInt(Math.floor(Date.now() / 1000) + 3600); // 1 hour
+const result = await registerImprintAsCreator(clients, {
+  metadataURI,
+  maxSupply: REPLACE_WITH_MAX_SUPPLY_BIGINT,
+  primaryPrice: parseUsdc("REPLACE_WITH_PRICE"),
+  royaltyBps: REPLACE_WITH_ROYALTY_BPS,
+  contentHash,
+  deadline,
+});
+
+console.log(JSON.stringify({
+  success: true,
+  tokenId: result.tokenId.toString(),
+  txHash: result.txHash,
+  status: "pending-review",
+  message: `Imprint registered as token #${result.tokenId} — pending admin review`,
+}));
+```
+
+### Step 4: Upload content to delivery API
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+
+const apiUrl = process.env.IMPRINTS_API_URL ?? "https://memonex-imprints-api.memonex.workers.dev";
+const tokenId = REPLACE_WITH_TOKEN_ID;
+const jwt = "REPLACE_WITH_JWT_TOKEN"; // From /auth/verify
+
+const response = await fetch(`${apiUrl}/creators/imprints/${tokenId}/content`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+  body: JSON.stringify(canonical),
+});
+
+const result = await response.json();
+console.log(JSON.stringify(result));
+```
+
+### Step 5: Record in daily note
+
+Append to `$DAILY_NOTE`:
+```
+### Imprint Created
+- Token ID: #{tokenId}
+- Name: {name}
+- Status: Pending admin review
+- TX: {explorerUrl}/tx/{txHash}
+```
+
+---
+
+## `/imprints create-collection`
+
+Create a blind-mint collection from own imprints. Collection starts **inactive** and requires admin approval.
+
+### Step 1: List own imprints
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, browseAllImprintTypes } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const allImprints = await browseAllImprintTypes(clients);
+const myImprints = allImprints.filter(i => i.type.creator.toLowerCase() === clients.address.toLowerCase());
+
+console.log(JSON.stringify(myImprints.map(i => ({
+  tokenId: i.tokenId.toString(),
+  active: i.type.active,
+  metadataURI: i.type.metadataURI,
+  maxSupply: i.type.maxSupply.toString(),
+  minted: i.type.minted.toString(),
+}))));
+```
+
+### Step 2: Ask user to select imprints + configure
+
+Ask the user:
+- Which imprints to include (must be own imprints, ideally active ones)
+- Rarity weight for each (higher = more common)
+- Mint price in USDC
+- Collection name
+
+### Step 3: Create collection on-chain
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, createCollectionAsCreator, parseUsdc } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const result = await createCollectionAsCreator(clients, {
+  name: "REPLACE_WITH_COLLECTION_NAME",
+  mintPrice: parseUsdc("REPLACE_WITH_PRICE"),
+  tokenIds: [REPLACE_WITH_TOKEN_IDS_BIGINT],
+  rarityWeights: [REPLACE_WITH_WEIGHTS_BIGINT],
+});
+
+console.log(JSON.stringify({
+  success: true,
+  collectionId: result.collectionId.toString(),
+  txHash: result.txHash,
+  status: "pending-review",
+  message: `Collection created as #${result.collectionId} — pending admin review`,
+}));
+```
+
+---
+
+## `/imprints my-collections`
+
+List collections owned by this agent's wallet with stats.
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, browseAllCollections } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const all = await browseAllCollections(clients, { includeAvailability: true });
+const mine = all.filter(c => c.collection.creator.toLowerCase() === clients.address.toLowerCase());
+
+for (const { collectionId, collection, availability } of mine) {
+  console.log(JSON.stringify({
+    collectionId: collectionId.toString(),
+    name: collection.name,
+    active: collection.active,
+    mintPrice: collection.mintPrice.toString(),
+    tokenCount: collection.tokenIds.length,
+    availableTokens: availability?.availableTokenIds.length ?? 0,
+    totalWeight: availability?.totalWeight.toString() ?? "0",
+  }));
+}
+```
+
+---
+
+## `/imprints manage-allowlist <collectionId>`
+
+Manage allowlist for a collection you own. Only the collection creator or contract owner can manage allowlists.
+
+### Options
+
+Ask the user which action:
+1. **Add wallets** to allowlist
+2. **Remove wallets** from allowlist
+3. **Toggle allowlist enforcement** (on/off)
+4. **Set claim limit** per wallet
+
+### Add wallets
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, addToAllowlist } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const collectionId = REPLACE_WITH_COLLECTION_ID_BIGINT;
+const wallets = ["REPLACE_WITH_WALLET_ADDRESSES"];
+const hash = await addToAllowlist(clients, collectionId, wallets);
+console.log(JSON.stringify({ success: true, txHash: hash, walletsAdded: wallets.length }));
+```
+
+### Remove wallets
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, removeFromAllowlist } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const collectionId = REPLACE_WITH_COLLECTION_ID_BIGINT;
+const wallets = ["REPLACE_WITH_WALLET_ADDRESSES"];
+const hash = await removeFromAllowlist(clients, collectionId, wallets);
+console.log(JSON.stringify({ success: true, txHash: hash, walletsRemoved: wallets.length }));
+```
+
+### Toggle enforcement
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, setAllowlistRequired } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const collectionId = REPLACE_WITH_COLLECTION_ID_BIGINT;
+const required = REPLACE_WITH_TRUE_OR_FALSE;
+const hash = await setAllowlistRequired(clients, collectionId, required);
+console.log(JSON.stringify({ success: true, txHash: hash, allowlistRequired: required }));
+```
+
+### Set claim limit
+
+```typescript
+import dotenv from "dotenv";
+dotenv.config();
+import { createClientsFromEnv, setClaimLimit } from "./src/index.js";
+const clients = createClientsFromEnv();
+
+const collectionId = REPLACE_WITH_COLLECTION_ID_BIGINT;
+const maxPerWallet = REPLACE_WITH_LIMIT_BIGINT; // 0n = unlimited
+const hash = await setClaimLimit(clients, collectionId, maxPerWallet);
+console.log(JSON.stringify({ success: true, txHash: hash, claimLimit: maxPerWallet.toString() }));
+```

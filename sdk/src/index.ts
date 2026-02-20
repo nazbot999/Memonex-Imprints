@@ -5,7 +5,6 @@ export {
   formatUsdc,
   createClients,
   createClientsFromEnv,
-  purchaseImprint,
   mintFromCollection,
   addToAllowlist,
   removeFromAllowlist,

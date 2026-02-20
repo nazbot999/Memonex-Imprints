@@ -129,26 +129,7 @@ async function ensureUsdcAllowance(
   }
 }
 
-// ── Primary sales ───────────────────────────────────────────────
-
-export async function purchaseImprint(
-  clients: ImprintsClients,
-  tokenId: bigint,
-  amount: bigint,
-): Promise<Hex> {
-  const imprintType = await getImprintType(clients, tokenId);
-  const totalCost = imprintType.primaryPrice * amount;
-  await ensureUsdcAllowance(clients, totalCost);
-
-  const hash = await clients.walletClient.writeContract({
-    address: clients.config.contractAddress,
-    abi: MEMONEX_IMPRINTS_ABI,
-    functionName: "purchase",
-    args: [tokenId, amount],
-  });
-  await clients.publicClient.waitForTransactionReceipt({ hash });
-  return hash;
-}
+// ── Primary sales (collection-based blind minting) ──────────────
 
 export async function mintFromCollection(
   clients: ImprintsClients,
@@ -442,6 +423,98 @@ export async function addImprintTypeWithSig(
   return { hash, tokenId };
 }
 
+// ── Creator registration helpers ─────────────────────────────────
+
+export async function registerImprintAsCreator(
+  clients: ImprintsClients,
+  params: {
+    metadataURI: string;
+    maxSupply: bigint;
+    primaryPrice: bigint;
+    royaltyBps: number;
+    contentHash: Hex;
+    deadline: bigint;
+  },
+): Promise<{ tokenId: bigint; txHash: Hex }> {
+  if (params.royaltyBps > 250) {
+    throw new Error(`royaltyBps must be <= 250 (2.5%), got ${params.royaltyBps}`);
+  }
+
+  const nonce = (await clients.publicClient.readContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "creatorNonces",
+    args: [clients.address],
+  })) as bigint;
+
+  const signature = await signImprintAuth(
+    clients.walletClient,
+    clients.config.contractAddress,
+    {
+      creator: clients.address,
+      contentHash: params.contentHash,
+      metadataURI: params.metadataURI,
+      maxSupply: params.maxSupply,
+      primaryPrice: params.primaryPrice,
+      royaltyBps: BigInt(params.royaltyBps),
+      nonce,
+      deadline: params.deadline,
+    },
+  );
+
+  const result = await addImprintTypeWithSig(clients, {
+    creator: clients.address,
+    metadataURI: params.metadataURI,
+    maxSupply: params.maxSupply,
+    primaryPrice: params.primaryPrice,
+    royaltyBps: BigInt(params.royaltyBps),
+    contentHash: params.contentHash,
+    deadline: params.deadline,
+    signature,
+  });
+
+  return { tokenId: result.tokenId, txHash: result.hash };
+}
+
+export async function createCollectionAsCreator(
+  clients: ImprintsClients,
+  params: {
+    name: string;
+    mintPrice: bigint;
+    tokenIds: bigint[];
+    rarityWeights: bigint[];
+  },
+): Promise<{ collectionId: bigint; txHash: Hex }> {
+  if (params.tokenIds.length === 0) {
+    throw new Error("Collection must contain at least one token");
+  }
+  if (params.tokenIds.length !== params.rarityWeights.length) {
+    throw new Error("tokenIds and rarityWeights must have the same length");
+  }
+
+  const hash = await clients.walletClient.writeContract({
+    address: clients.config.contractAddress,
+    abi: MEMONEX_IMPRINTS_ABI,
+    functionName: "createCollection",
+    args: [params.name, params.mintPrice, params.tokenIds, params.rarityWeights],
+  });
+  const receipt = await clients.publicClient.waitForTransactionReceipt({ hash });
+
+  const [created] = parseEventLogs({
+    abi: MEMONEX_IMPRINTS_ABI,
+    logs: receipt.logs,
+    eventName: "CollectionCreated",
+    strict: false,
+  });
+
+  const collectionId = created?.args?.collectionId;
+  if (typeof collectionId !== "bigint") {
+    throw new Error("CollectionCreated event not found in transaction receipt");
+  }
+
+  return { collectionId, txHash: hash };
+}
+
 // ── EIP-712 signing (for creator registration) ──────────────────
 
 export async function signImprintAuth(
@@ -515,7 +588,6 @@ export async function getImprintType(clients: ImprintsClients, tokenId: bigint):
     contentHash: r.contentHash,
     active: r.active,
     adminMintLocked: r.adminMintLocked,
-    collectionOnly: r.collectionOnly,
     metadataURI: r.metadataURI,
   };
 }
@@ -707,18 +779,17 @@ export async function browseAllImprintTypes(
   clients: ImprintsClients,
 ): Promise<{ tokenId: bigint; type: ImprintType }[]> {
   const nextId = await getNextTokenId(clients);
-  const results: { tokenId: bigint; type: ImprintType }[] = [];
+  const ids = Array.from({ length: Number(nextId) - 1 }, (_, i) => BigInt(i + 1));
 
-  for (let id = 1n; id < nextId; id++) {
-    try {
-      const imprintType = await getImprintType(clients, id);
-      results.push({ tokenId: id, type: imprintType });
-    } catch {
-      // Token ID may be invalid or reverted — skip
-    }
-  }
+  const settled = await Promise.all(
+    ids.map(id =>
+      getImprintType(clients, id)
+        .then(type => ({ tokenId: id, type }))
+        .catch(() => null)
+    )
+  );
 
-  return results;
+  return settled.filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
 export async function browseAllCollections(
@@ -726,29 +797,31 @@ export async function browseAllCollections(
   opts?: { activeOnly?: boolean; includeAvailability?: boolean },
 ): Promise<Array<{ collectionId: bigint; collection: Collection; availability?: CollectionAvailability }>> {
   const nextId = await getNextCollectionId(clients);
-  const results: Array<{ collectionId: bigint; collection: Collection; availability?: CollectionAvailability }> = [];
+  const ids = Array.from({ length: Number(nextId) - 1 }, (_, i) => BigInt(i + 1));
 
-  for (let id = 1n; id < nextId; id++) {
-    try {
-      const collection = await getCollection(clients, id);
-      if (opts?.activeOnly && !collection.active) continue;
+  const settled = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const collection = await getCollection(clients, id);
+        if (opts?.activeOnly && !collection.active) return null;
 
-      const row: { collectionId: bigint; collection: Collection; availability?: CollectionAvailability } = {
-        collectionId: id,
-        collection,
-      };
+        const row: { collectionId: bigint; collection: Collection; availability?: CollectionAvailability } = {
+          collectionId: id,
+          collection,
+        };
 
-      if (opts?.includeAvailability) {
-        row.availability = await getCollectionAvailability(clients, id);
+        if (opts?.includeAvailability) {
+          row.availability = await getCollectionAvailability(clients, id);
+        }
+
+        return row;
+      } catch {
+        return null;
       }
+    })
+  );
 
-      results.push(row);
-    } catch {
-      // Collection ID may be invalid or reverted — skip
-    }
-  }
-
-  return results;
+  return settled.filter((r): r is NonNullable<typeof r> => r !== null);
 }
 
 export async function transferImprint(

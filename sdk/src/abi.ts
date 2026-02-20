@@ -714,11 +714,6 @@ export const MEMONEX_IMPRINTS_ABI = [
             "internalType": "bool"
           },
           {
-            "name": "collectionOnly",
-            "type": "bool",
-            "internalType": "bool"
-          },
-          {
             "name": "metadataURI",
             "type": "string",
             "internalType": "string"
@@ -1043,24 +1038,6 @@ export const MEMONEX_IMPRINTS_ABI = [
       }
     ],
     "stateMutability": "view"
-  },
-  {
-    "type": "function",
-    "name": "purchase",
-    "inputs": [
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "internalType": "uint256"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "internalType": "uint256"
-      }
-    ],
-    "outputs": [],
-    "stateMutability": "nonpayable"
   },
   {
     "type": "function",
@@ -2088,49 +2065,6 @@ export const MEMONEX_IMPRINTS_ABI = [
   },
   {
     "type": "event",
-    "name": "ImprintPurchased",
-    "inputs": [
-      {
-        "name": "buyer",
-        "type": "address",
-        "indexed": true,
-        "internalType": "address"
-      },
-      {
-        "name": "tokenId",
-        "type": "uint256",
-        "indexed": true,
-        "internalType": "uint256"
-      },
-      {
-        "name": "amount",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "totalPaid",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "platformFee",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      },
-      {
-        "name": "creatorRevenue",
-        "type": "uint256",
-        "indexed": false,
-        "internalType": "uint256"
-      }
-    ],
-    "anonymous": false
-  },
-  {
-    "type": "event",
     "name": "ImprintStatusUpdated",
     "inputs": [
       {
@@ -2919,11 +2853,6 @@ export const MEMONEX_IMPRINTS_ABI = [
   },
   {
     "type": "error",
-    "name": "TokenCollectionOnly",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "TokenInactive",
     "inputs": [
       {
@@ -2954,4 +2883,51 @@ export const MEMONEX_IMPRINTS_ABI = [
     "name": "ZeroAddress",
     "inputs": []
   }
+] as const;
+
+export const ERC20_ABI = [
+  {
+    name: "allowance",
+    type: "function",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "approve",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "spender", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    name: "balanceOf",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    name: "decimals",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    name: "transfer",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
 ] as const;

@@ -50,6 +50,7 @@ contract MemonexImprintsTest is Test {
     uint96 constant PLATFORM_BPS = 250; // 2.5%
     uint96 constant SECONDARY_BPS = 250; // 2.5%
     uint96 constant ROYALTY_BPS = 500; // 5%
+    uint96 constant CREATOR_ROYALTY_BPS = 250; // 2.5% — max for creator-registered imprints
     uint256 constant PRICE = 5e6; // 5 USDC
     uint256 constant MAX_SUPPLY = 100;
     bytes32 constant CONTENT_HASH = keccak256("test-content-v1");
@@ -211,11 +212,11 @@ contract MemonexImprintsTest is Test {
         uint256 deadline = block.timestamp + 1 hours;
 
         bytes memory sig = _signImprintAuth(
-            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, nonce, deadline
+            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, nonce, deadline
         );
 
         uint256 tid = imprints.addImprintTypeWithSig(
-            creatorSigner, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, deadline, sig
+            creatorSigner, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig
         );
 
         assertEq(tid, 1);
@@ -224,43 +225,55 @@ contract MemonexImprintsTest is Test {
         assertEq(imprints.creatorNonces(creatorSigner), nonce + 1);
     }
 
-    function test_addImprintTypeWithSig_replayFails() public {
+    function test_addImprintTypeWithSig_exceedsCreatorRoyaltyCap() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory sig = _signImprintAuth(
             creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, 0, deadline
         );
 
+        vm.expectRevert(MemonexImprints.InvalidBps.selector);
         imprints.addImprintTypeWithSig(
             creatorSigner, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, deadline, sig
+        );
+    }
+
+    function test_addImprintTypeWithSig_replayFails() public {
+        uint256 deadline = block.timestamp + 1 hours;
+        bytes memory sig = _signImprintAuth(
+            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, 0, deadline
+        );
+
+        imprints.addImprintTypeWithSig(
+            creatorSigner, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig
         );
 
         // Replay with same sig fails (nonce incremented + digest used)
         vm.expectRevert(MemonexImprints.InvalidSignature.selector);
         imprints.addImprintTypeWithSig(
-            creatorSigner, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, deadline, sig
+            creatorSigner, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig
         );
     }
 
     function test_addImprintTypeWithSig_deadlineExpired() public {
         uint256 deadline = block.timestamp - 1;
         bytes memory sig = _signImprintAuth(
-            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, 0, deadline
+            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, 0, deadline
         );
 
         vm.expectRevert(MemonexImprints.DeadlineExpired.selector);
         imprints.addImprintTypeWithSig(
-            creatorSigner, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, deadline, sig
+            creatorSigner, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig
         );
     }
 
     function test_addImprintTypeWithSig_wrongSigner() public {
         uint256 deadline = block.timestamp + 1 hours;
         bytes memory sig = _signImprintAuth(
-            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, 0, deadline
+            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, 0, deadline
         );
 
         vm.expectRevert(MemonexImprints.InvalidSignature.selector);
-        imprints.addImprintTypeWithSig(buyer, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, deadline, sig);
+        imprints.addImprintTypeWithSig(buyer, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -393,7 +406,7 @@ contract MemonexImprintsTest is Test {
         vm.stopPrank();
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.SlippageExceeded.selector, 20e6, 15e6));
+        vm.expectRevert(MemonexImprints.SlippageExceeded.selector);
         imprints.buyFromHolder(tid, seller, 2, 15e6);
     }
 
@@ -413,7 +426,7 @@ contract MemonexImprintsTest is Test {
         uint256 tid = _addDefault();
 
         vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.NotListed.selector, tid, seller));
+        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.NotListed.selector, tid));
         imprints.buyFromHolder(tid, seller, 1, 10e6);
     }
 
@@ -567,7 +580,7 @@ contract MemonexImprintsTest is Test {
         IMemonexImprints.ImprintType memory t = imprints.getImprintType(tid);
         assertTrue(t.adminMintLocked);
 
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.AdminMintIsLocked.selector, tid));
+        vm.expectRevert(MemonexImprints.AdminMintIsLocked.selector);
         imprints.adminMint(buyer, tid, 1, "");
     }
 
@@ -650,7 +663,7 @@ contract MemonexImprintsTest is Test {
         address externalToken = makeAddr("externalToken");
 
         vm.prank(externalToken);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.InvalidERC1155Sender.selector, externalToken));
+        vm.expectRevert(MemonexImprints.InvalidERC1155Sender.selector);
         imprints.onERC1155Received(address(this), seller, 1, 1, "");
     }
 
@@ -680,7 +693,7 @@ contract MemonexImprintsTest is Test {
     }
 
     function test_rescueERC1155_selfToken_reverts() public {
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.InvalidERC1155Sender.selector, address(imprints)));
+        vm.expectRevert(MemonexImprints.InvalidERC1155Sender.selector);
         imprints.rescueERC1155(address(imprints), buyer, 1, 1, "");
     }
 
@@ -877,7 +890,7 @@ contract MemonexImprintsTest is Test {
 
     function test_uri() public {
         uint256 tid = _addDefault();
-        // collectionOnly=true and minted=0 → hidden
+        // minted=0 → hidden
         assertEq(imprints.uri(tid), "");
 
         // After minting, uri is revealed
@@ -1024,7 +1037,7 @@ contract MemonexImprintsTest is Test {
         weights[0] = 50;
         weights[1] = 50;
 
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.DuplicateTokenInCollection.selector, t1));
+        vm.expectRevert(MemonexImprints.DuplicateTokenInCollection.selector);
         imprints.createCollection("Bad", 1e6, tokenIds, weights);
     }
 
@@ -1044,6 +1057,7 @@ contract MemonexImprintsTest is Test {
 
         imprints.setCollectionCreatorAuthorization(collectionCurator, true);
         uint256 collectionId = _createCollectionAs(collectionCurator, 4e6, tokenIds, weights);
+        imprints.activateCollection(collectionId); // Admin approves
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
         uint256 treasuryBefore = usdc.balanceOf(treasury);
@@ -1073,6 +1087,7 @@ contract MemonexImprintsTest is Test {
 
         imprints.setCollectionCreatorAuthorization(collectionCurator, true);
         uint256 collectionId = _createCollectionAs(collectionCurator, 2e6, tokenIds, weights);
+        imprints.activateCollection(collectionId); // Admin approves
 
         vm.prank(buyer);
         imprints.mintFromCollection(collectionId, 10);
@@ -1187,7 +1202,7 @@ contract MemonexImprintsTest is Test {
         uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
 
         vm.prank(buyer2);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.CollectionSoldOut.selector, collectionId));
+        vm.expectRevert(MemonexImprints.CollectionSoldOut.selector);
         imprints.mintFromCollection(collectionId, 1);
     }
 
@@ -1214,26 +1229,11 @@ contract MemonexImprintsTest is Test {
     }
 
     // ══════════════════════════════════════════════════════════════
-    // collectionOnly protection
+    // Collection minting (purchase() removed — all mints go through collections)
     // ══════════════════════════════════════════════════════════════
 
-    function test_collectionOnly_defaultTrue() public {
-        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
-        IMemonexImprints.ImprintType memory t = imprints.getImprintType(tid);
-        assertTrue(t.collectionOnly);
-    }
-
-    function test_collectionOnly_purchaseReverts() public {
-        uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
-
-        vm.prank(buyer);
-        vm.expectRevert(abi.encodeWithSelector(MemonexImprints.TokenCollectionOnly.selector, tid));
-        imprints.purchase(tid, 1);
-    }
-
-    function test_collectionOnly_mintFromCollectionStillWorks() public {
+    function test_mintFromCollectionStillWorks() public {
         uint256 t1 = _addImprint(creator, 100, 1e6);
-        // t1 is collectionOnly=true by default — mintFromCollection should still work
 
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = t1;
@@ -1249,21 +1249,20 @@ contract MemonexImprintsTest is Test {
         assertEq(imprints.balanceOf(buyer, t1), 1);
     }
 
-    function test_collectionOnly_adminMintStillWorks() public {
+    function test_adminMintStillWorks() public {
         uint256 tid = _addDefault();
-        // collectionOnly=true by default — adminMint should still work
         imprints.adminMint(buyer, tid, 1, "");
         assertEq(imprints.balanceOf(buyer, tid), 1);
     }
 
-    function test_collectionOnly_uriHiddenWhenUnminted() public {
+    function test_uriHiddenWhenUnminted() public {
         uint256 tid = imprints.addImprintType(creator, META_URI, MAX_SUPPLY, PRICE, ROYALTY_BPS, CONTENT_HASH, 0);
 
-        // collectionOnly=true, minted=0 → empty uri
+        // minted=0 → empty uri
         assertEq(imprints.uri(tid), "");
     }
 
-    function test_collectionOnly_uriRevealedAfterMint() public {
+    function test_uriRevealedAfterMint() public {
         uint256 t1 = _addImprint(creator, 100, 1e6);
 
         // Before any mints, uri is hidden
@@ -1285,9 +1284,8 @@ contract MemonexImprintsTest is Test {
         assertGt(bytes(revealed).length, 0);
     }
 
-    function test_collectionOnly_nonexistentTokenReturnsEmpty() public {
-        // Non-existent token: collectionOnly defaults to false, minted defaults to 0
-        // ERC1155URIStorage will just return "" for non-existent tokens
+    function test_nonexistentTokenReturnsEmptyUri() public {
+        // Non-existent token: minted defaults to 0 → empty uri
         assertEq(imprints.uri(999), "");
     }
 
@@ -1466,6 +1464,7 @@ contract MemonexImprintsTest is Test {
         weights[0] = 100;
 
         uint256 collectionId = _createCollectionAs(collectionCurator, 0, tokenIds, weights);
+        imprints.activateCollection(collectionId); // Admin approves
 
         uint256 buyerBefore = usdc.balanceOf(buyer);
         uint256 treasuryBefore = usdc.balanceOf(treasury);
@@ -1554,6 +1553,80 @@ contract MemonexImprintsTest is Test {
         notListed[0] = buyer2;
         imprints.removeFromAllowlist(collectionId, notListed);
         assertFalse(imprints.allowlisted(collectionId, buyer2));
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Multi-creator review gate
+    // ══════════════════════════════════════════════════════════════
+
+    function test_creatorRegisteredImprintStartsInactive() public {
+        uint256 nonce = imprints.creatorNonces(creatorSigner);
+        uint256 deadline = block.timestamp + 1 hours;
+
+        bytes memory sig = _signImprintAuth(
+            creatorSigner, creatorPk, CONTENT_HASH, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, nonce, deadline
+        );
+
+        uint256 tid = imprints.addImprintTypeWithSig(
+            creatorSigner, META_URI, MAX_SUPPLY, PRICE, CREATOR_ROYALTY_BPS, CONTENT_HASH, deadline, sig
+        );
+
+        IMemonexImprints.ImprintType memory t = imprints.getImprintType(tid);
+        assertFalse(t.active, "Creator-registered imprint should start inactive (pending review)");
+    }
+
+    function test_nonOwnerCollectionStartsInactive() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        imprints.setCollectionCreatorAuthorization(collectionCurator, true);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(collectionCurator, 2e6, tokenIds, weights);
+
+        IMemonexImprints.Collection memory collection = imprints.getCollection(collectionId);
+        assertFalse(collection.active, "Non-owner collection should start inactive (pending review)");
+    }
+
+    function test_ownerCollectionStillStartsActive() public {
+        uint256 t1 = _addImprint(creator, 100, 1e6);
+
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = t1;
+        uint256[] memory weights = new uint256[](1);
+        weights[0] = 100;
+
+        uint256 collectionId = _createCollectionAs(address(this), 2e6, tokenIds, weights);
+
+        IMemonexImprints.Collection memory collection = imprints.getCollection(collectionId);
+        assertTrue(collection.active, "Owner collection should still start active");
+    }
+
+    function test_inactiveImprintSkippedInCollectionMint() public {
+        uint256 activeToken = _addImprint(creator, 100, 1e6);
+        uint256 inactiveToken = _addImprint(creator, 100, 1e6);
+
+        // Deactivate second token
+        imprints.setImprintActive(inactiveToken, false);
+
+        uint256[] memory tokenIds = new uint256[](2);
+        tokenIds[0] = activeToken;
+        tokenIds[1] = inactiveToken;
+        uint256[] memory weights = new uint256[](2);
+        weights[0] = 50;
+        weights[1] = 50;
+
+        uint256 collectionId = _createCollectionAs(address(this), 1e6, tokenIds, weights);
+
+        // Mint several — all should go to the active token
+        vm.prank(buyer);
+        imprints.mintFromCollection(collectionId, 10);
+
+        assertEq(imprints.balanceOf(buyer, activeToken), 10);
+        assertEq(imprints.balanceOf(buyer, inactiveToken), 0);
     }
 
     function test_blindMint_distributionSanity() public {

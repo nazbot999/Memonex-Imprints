@@ -17,7 +17,6 @@ interface IMemonexImprints {
         bytes32 contentHash;
         bool active;
         bool adminMintLocked;
-        bool collectionOnly;
         string metadataURI;
     }
 
@@ -74,15 +73,6 @@ interface IMemonexImprints {
     event PlatformFeeBpsUpdated(uint96 oldBps, uint96 newBps);
 
     event SecondaryFeeBpsUpdated(uint96 oldBps, uint96 newBps);
-
-    event ImprintPurchased(
-        address indexed buyer,
-        uint256 indexed tokenId,
-        uint256 amount,
-        uint256 totalPaid,
-        uint256 platformFee,
-        uint256 creatorRevenue
-    );
 
     event AdminMinted(address indexed to, uint256 indexed tokenId, uint256 amount, bytes data);
 
@@ -201,8 +191,6 @@ interface IMemonexImprints {
     function setClaimLimit(uint256 collectionId, uint256 maxPerWallet) external;
 
     // ── Primary sale ───────────────────────────────────────────────
-
-    function purchase(uint256 tokenId, uint256 amount) external;
 
     function mintFromCollection(uint256 collectionId) external;
 
