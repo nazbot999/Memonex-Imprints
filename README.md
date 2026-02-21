@@ -132,7 +132,7 @@ test/
 
 | Contract | Address |
 |----------|---------|
-| MemonexImprints | [`0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd`](https://testnet.monadscan.com/address/0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd) |
+| MemonexImprints | [`0x8120e581562be294a34fD51Aba249A26FFcC03Ae`](https://testnet.monadscan.com/address/0x8120e581562be294a34fD51Aba249A26FFcC03Ae) |
 | USDC | `0x534b2f3A21130d7a60830c2Df862319e593943A3` |
 | ERC-8004 Identity | [`0x8004A818BFB912233c491871b3d84c89A494BD9e`](https://testnet.monadscan.com/address/0x8004A818BFB912233c491871b3d84c89A494BD9e) |
 | ERC-8004 Reputation | [`0x8004B663056A597Dffe9eCcC1965A193B7388713`](https://testnet.monadscan.com/address/0x8004B663056A597Dffe9eCcC1965A193B7388713) |

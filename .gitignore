@@ -43,7 +43,9 @@ api/.wrangler/
 
 # Genesis content (product IP)
 genesis/
+genesis-v2/
 
 # Admin scripts (internal tooling)
 script/register-imprints.ts
 script/register-collection.ts
+script/safe-utils.ts

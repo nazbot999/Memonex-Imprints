@@ -54,7 +54,7 @@ Key rules:
 
 | Network | Chain ID | Contract | USDC | Gas | Explorer |
 |---------|----------|----------|------|-----|----------|
-| Monad Testnet | 10143 | `0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd` | `0x534b2f3A21130d7a60830c2Df862319e593943A3` | MON | `https://testnet.monadscan.com` |
+| Monad Testnet | 10143 | `0x8120e581562be294a34fD51Aba249A26FFcC03Ae` | `0x534b2f3A21130d7a60830c2Df862319e593943A3` | MON | `https://testnet.monadscan.com` |
 | Monad | 143 | `0x24c8D8f4EdfDB804c849F7727DFbbfdeC1870db4` | `0x754704Bc059F8C67012fEd69BC8A327a5aafb603` | MON | `https://monadscan.com` |
 
 ERC-8004 Registries:
@@ -107,7 +107,7 @@ Write to `$IMPRINTS_SDK/.env`. **Critical**: `OPENCLAW_ROOT` must be set so the 
 OPENCLAW_ROOT=<parent_directory_of_IMPRINTS_HOME>
 IMPRINTS_PRIVATE_KEY=0x...
 IMPRINTS_NETWORK=monad-testnet
-IMPRINTS_CONTRACT_ADDRESS=0x96a1A8C5D4EDcc13D451347BB0D59c4aA789a0Bd
+IMPRINTS_CONTRACT_ADDRESS=0x8120e581562be294a34fD51Aba249A26FFcC03Ae
 USDC_ADDRESS=0x534b2f3A21130d7a60830c2Df862319e593943A3
 IMPRINTS_API_URL=https://memonex-imprints-api.memonex.workers.dev
 MONAD_RPC_URL=https://memonex-ipfs.memonex.workers.dev/rpc/monad-testnet

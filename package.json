@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "NFT-backed personality modules for OpenClaw AI agents",
-  "workspaces": ["sdk", "api"],
+  "workspaces": [
+    "sdk",
+    "api"
+  ],
   "scripts": {
     "build:contracts": "forge build",
     "test:contracts": "forge test -vvv",
@@ -11,5 +14,8 @@
     "typecheck:sdk": "cd sdk && npm run typecheck",
     "build:api": "cd api && npm run build",
     "build": "npm run build:contracts && npm run build:sdk"
+  },
+  "dependencies": {
+    "@safe-global/protocol-kit": "^6.1.2"
   }
 }
