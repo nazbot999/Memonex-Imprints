@@ -61,6 +61,7 @@ export interface MintFromCollectionResult {
 
 export type ImprintRarity = "common" | "uncommon" | "rare" | "legendary" | "mythic";
 export type ImprintStrength = "subtle" | "medium" | "strong";
+export type ImprintSchema = "memonex.imprint.v1" | "memonex.imprint.v2";
 
 export interface ImprintPersonality {
   tone: string;
@@ -71,8 +72,19 @@ export interface ImprintPersonality {
   strength: ImprintStrength;
 }
 
+export interface ImprintTraits {
+  empathy: number;
+  humor: number;
+  reasoningDepth: number;
+  riskTolerance: number;
+  formality: number;
+  creativity: number;
+  assertiveness: number;
+  optimism: number;
+}
+
 export interface CanonicalImprint {
-  schema: "memonex.imprint.v1";
+  schema: ImprintSchema;
   name: string;
   version: string;
   creator: Address;
@@ -80,6 +92,13 @@ export interface CanonicalImprint {
   rarity: ImprintRarity;
   personality: ImprintPersonality;
   contentHash?: Hex;
+  // v2 fields
+  collection?: string;
+  description?: string;
+  maxSupply?: number;
+  primaryPriceUsdc?: string;
+  royaltyBps?: number;
+  traits?: ImprintTraits;
 }
 
 // ── Equip slots ─────────────────────────────────────────────────

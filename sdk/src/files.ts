@@ -167,13 +167,26 @@ export function generateActiveImprintsMd(
 
   if (equipped.length > 0) {
     lines.push("", "## Personality Rules (apply on top of SOUL.md)");
-    const tones = equipped.map((s) => s.imprint.personality.tone).filter(Boolean);
+    const tones = equipped.map((s) => {
+      const strength = s.imprint.personality.strength;
+      const strengthLabel = strength.charAt(0).toUpperCase() + strength.slice(1);
+      return `${s.imprint.personality.tone} [${strengthLabel}]`;
+    }).filter(Boolean);
     if (tones.length > 0) {
       lines.push(`- Tone: ${tones.join(", with ")}`);
     }
     for (const slot of equipped) {
       for (const rule of slot.imprint.personality.rules) {
         lines.push(`- ${rule}`);
+      }
+    }
+
+    const triggers = equipped.flatMap((s) => s.imprint.personality.triggers ?? []);
+    if (triggers.length > 0) {
+      lines.push("", "## Activation Triggers");
+      lines.push("> Apply the personality rules above when these situations arise:");
+      for (const t of triggers) {
+        lines.push(`- ${t}`);
       }
     }
 
